@@ -43,6 +43,53 @@ body {
     position: relative;
 }
 
+.nav-link {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.nav-link:hover {
+    text-decoration: underline;
+}
+
+.form-group {
+    text-align: left;
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: var(--text-color);
+}
+
+.form-group input, 
+.form-group textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background-color: var(--card-background);
+    color: var(--text-color);
+    box-sizing: border-box;
+    font-family: inherit;
+}
+
+body.dark-mode .form-group input,
+body.dark-mode .form-group textarea {
+    border-color: #444;
+}
+
+.form-group textarea {
+    height: 120px;
+    resize: vertical;
+}
+
 .container:hover {
     transform: translateY(-5px);
     box-shadow: 0 15px 40px var(--shadow-color);
