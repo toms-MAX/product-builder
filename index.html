@@ -1,22 +1,73 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>로또 번호 추천</title>
+    <title>중학교 영어 시험 도우미</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
+    <div class="container main-container">
         <button id="theme-toggle">다크 모드</button>
-        <h1>로또 번호 추천</h1>
-        <p>행운의 번호를 받아보세요!</p>
-        <button id="generate-button">번호 생성</button>
-        <div id="result-container">
-            <div class="lotto-numbers" id="lotto-numbers">
-                <!-- 번호가 여기에 표시됩니다. -->
-            </div>
+        <h1>영어 시험 도우미</h1>
+        
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="prediction">기출 예상문제</button>
+            <button class="tab-btn" data-tab="question-bank">문제은행</button>
         </div>
+
+        <!-- 기출 예상문제 탭 -->
+        <div id="prediction" class="tab-content active">
+            <p>영어 지문과 기출문제를 기반으로 예상문제를 생성합니다.</p>
+            <div class="form-group">
+                <label for="reading-material">영어 지문 입력</label>
+                <textarea id="reading-material" placeholder="분석할 영어 지문을 붙여넣으세요..."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="prev-exam-json">기출문제 (JSON 파일)</label>
+                <input type="file" id="prev-exam-json" accept=".json">
+            </div>
+            <button id="generate-prediction" class="action-btn">예상문제 생성</button>
+        </div>
+
+        <!-- 문제은행 탭 -->
+        <div id="question-bank" class="tab-content">
+            <p>JSON 템플릿의 틀을 유지하며 내용을 변경하여 새로운 문제를 생성합니다.</p>
+            <div class="form-group">
+                <label for="level-select">난이도</label>
+                <select id="level-select">
+                    <option value="easy">쉬움</option>
+                    <option value="medium" selected>보통</option>
+                    <option value="hard">어려움</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="topic-select">주제</label>
+                <select id="topic-select">
+                    <option value="grammar">문법</option>
+                    <option value="vocabulary">어휘</option>
+                    <option value="reading">독해</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="question-count">문제 개수</label>
+                <input type="number" id="question-count" min="1" max="20" value="5">
+            </div>
+            <div class="form-group">
+                <label for="template-json">문제 템플릿 (JSON 파일)</label>
+                <input type="file" id="template-json" accept=".json">
+            </div>
+            <button id="generate-bank" class="action-btn">문제 생성</button>
+        </div>
+
+        <div id="result-container" class="result-area">
+            <h3>생성 결과</h3>
+            <div id="generated-questions">
+                <!-- 결과가 여기에 표시됩니다. -->
+            </div>
+            <button id="export-json" class="secondary-btn" style="display:none;">JSON으로 내보내기</button>
+        </div>
+
         <div style="margin-top: 30px;">
             <a href="contact.html" class="nav-link">제휴 문의하기</a>
         </div>

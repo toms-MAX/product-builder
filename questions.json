@@ -1,0 +1,16 @@
+[
+  {
+    "question": "다음 문장의 빈칸에 들어갈 가장 적절한 단어는? 'I am ______ to meet you.'",
+    "options": ["① glad", "② sadly", "③ angry", "④ hungry"],
+    "answer": "①",
+    "level": "easy",
+    "topic": "vocabulary"
+  },
+  {
+    "question": "다음 중 어법상 어색한 문장은?",
+    "options": ["① She like apples.", "② He is a student.", "③ They are playing soccer.", "④ I have a dog."],
+    "answer": "①",
+    "level": "medium",
+    "topic": "grammar"
+  }
+]
