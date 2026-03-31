@@ -6,20 +6,55 @@ document.addEventListener('DOMContentLoaded', () => {
     const body = document.body;
     const tabBtns = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
-    
     // Feature 1: Prediction
     const generatePredictionBtn = document.getElementById('generate-prediction');
     const readingMaterial = document.getElementById('reading-material');
+    const prevExamPdf = document.getElementById('prev-exam-pdf');
     const prevExamJson = document.getElementById('prev-exam-json');
-    
+
     // Feature 2: Question Bank
     const generateBankBtn = document.getElementById('generate-bank');
     const levelSelect = document.getElementById('level-select');
     const topicSelect = document.getElementById('topic-select');
     const questionCount = document.getElementById('question-count');
+    const templatePdf = document.getElementById('template-pdf');
     const templateJson = document.getElementById('template-json');
-    
-    // Output
+
+    // Configure PDF.js worker
+    if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    // PDF text extraction helper
+    async function extractTextFromPdf(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const typedarray = new Uint8Array(e.target.result);
+                try {
+                    const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                    let fullText = '';
+                    const maxPages = Math.min(pdf.numPages, 20); // Limit to 20 pages for performance
+
+                    for (let i = 1; i <= maxPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        const pageText = textContent.items.map(item => item.str).join(' ');
+                        fullText += pageText + '\n';
+                    }
+                    resolve(fullText);
+                } catch (err) {
+                    reject('PDF 파싱 오류: ' + err.message);
+                }
+            };
+            reader.onerror = () => reject('파일 읽기 오류');
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    // File reading helper
+    async function readJsonFile(file) {
+
     const generatedQuestionsContainer = document.getElementById('generated-questions');
     const exportJsonBtn = document.getElementById('export-json');
     let lastGeneratedData = null;
@@ -113,32 +148,45 @@ document.addEventListener('DOMContentLoaded', () => {
     // Feature 1: Prediction Logic (Mock)
     generatePredictionBtn.addEventListener('click', async () => {
         const text = readingMaterial.value;
-        const file = prevExamJson.files[0];
+        const pdfFile = prevExamPdf.files[0];
+        const jsonFile = prevExamJson.files[0];
 
-        if (!text) {
-            alert('영어 지문을 입력해주세요.');
+        if (!text && !pdfFile) {
+            alert('영어 지문을 입력하거나 분석할 PDF 파일을 선택해주세요.');
             return;
         }
 
-        let prevData = null;
-        if (file) {
+        let contextText = text;
+        if (pdfFile) {
             try {
-                prevData = await readJsonFile(file);
+                const pdfText = await extractTextFromPdf(pdfFile);
+                contextText = (contextText ? contextText + '\n' : '') + pdfText;
+                console.log('PDF에서 추출된 텍스트:', pdfText.substring(0, 100) + '...');
             } catch (err) {
                 alert(err);
                 return;
             }
         }
 
-        // Mock generation logic
+        let prevData = null;
+        if (jsonFile) {
+            try {
+                prevData = await readJsonFile(jsonFile);
+            } catch (err) {
+                alert(err);
+                return;
+            }
+        }
+
+        // Mock generation logic based on extracted context
         const mockQuestions = [
             {
-                question: "위 지문의 주제로 가장 적절한 것은?",
+                question: "[PDF/지문 분석 기반] 위 지문의 주제로 가장 적절한 것은?",
                 options: ["① Importance of Study", "② Health Benefits", "③ Future Technology", "④ Environmental Protection"],
                 answer: "①"
             },
             {
-                question: "지문의 내용과 일치하지 않는 것은?",
+                question: "[PDF/지문 분석 기반] 지문의 내용과 일치하지 않는 것은?",
                 options: ["① The author is a student.", "② Technology is evolving.", "③ Nature is important.", "④ AI will replace teachers."],
                 answer: "④"
             }
@@ -152,22 +200,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const level = levelSelect.value;
         const topic = topicSelect.value;
         const count = parseInt(questionCount.value);
-        const file = templateJson.files[0];
+        const pdfFile = templatePdf.files[0];
+        const jsonFile = templateJson.files[0];
 
-        if (!file) {
-            alert('문제 템플릿 JSON 파일을 선택해주세요.');
+        if (!pdfFile && !jsonFile) {
+            alert('문제 템플릿 PDF 또는 JSON 파일을 선택해주세요.');
             return;
         }
 
         try {
-            const template = await readJsonFile(file);
+            let templateContext = "";
+            if (pdfFile) {
+                templateContext = await extractTextFromPdf(pdfFile);
+                console.log('PDF 템플릿에서 추출된 텍스트:', templateContext.substring(0, 100) + '...');
+            } else if (jsonFile) {
+                const jsonContent = await readJsonFile(jsonFile);
+                templateContext = JSON.stringify(jsonContent);
+            }
             
-            // Mock transformation logic: 
-            // In a real app, this would use LLM or template engine to swap content
+            // Mock transformation logic
             const transformedQuestions = [];
             for (let i = 0; i < count; i++) {
                 transformedQuestions.push({
-                    question: `[${level.toUpperCase()} - ${topic.toUpperCase()}] 새롭게 생성된 문제 ${i + 1}`,
+                    question: `[PDF/JSON 템플릿 기반 - ${level.toUpperCase()}] 새롭게 변형된 문제 ${i + 1}`,
                     options: ["① 보기 A", "② 보기 B", "③ 보기 C", "④ 보기 D"],
                     answer: "①"
                 });
