@@ -14,8 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Feature 1: Prediction
     const generatePredictionBtn = document.getElementById('generate-prediction');
     const readingMaterial = document.getElementById('reading-material');
-    const prevExamPdf = document.getElementById('prev-exam-pdf');
-    const prevExamJson = document.getElementById('prev-exam-json');
 
     // Feature 2: Question Bank
     const generateBankBtn = document.getElementById('generate-bank');
@@ -28,7 +26,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const generatedQuestionsContainer = document.getElementById('generated-questions');
     const exportJsonBtn = document.getElementById('export-json');
     const resultArea = document.getElementById('result-container');
+    
+    // Feature 3: Saved List & PDF
+    const savedCountBadge = document.getElementById('saved-count');
+    const savedQuestionsList = document.getElementById('saved-questions-list');
+    const exportPdfBtn = document.getElementById('export-pdf');
+    const clearSavedBtn = document.getElementById('clear-saved');
     let lastGeneratedData = null;
+    let savedQuestions = [];
 
     // Configure PDF.js worker
     if (typeof pdfjsLib !== 'undefined') {
@@ -162,6 +167,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const qDiv = document.createElement('div');
             qDiv.classList.add('question-item');
             
+            const addBtn = document.createElement('button');
+            addBtn.classList.add('add-save-btn');
+            addBtn.textContent = '담기';
+            addBtn.onclick = () => saveQuestion(q);
+            qDiv.appendChild(addBtn);
+
             const qText = document.createElement('span');
             qText.classList.add('question-text');
             qText.textContent = `${index + 1}. ${q.question}`;
@@ -183,6 +194,63 @@ document.addEventListener('DOMContentLoaded', () => {
         if (exportJsonBtn) exportJsonBtn.style.display = 'block';
         lastGeneratedData = questions;
         resultArea.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Save/Select Question logic
+    function saveQuestion(question) {
+        // Prevent duplicates
+        const isDuplicate = savedQuestions.some(q => q.question === question.question);
+        if (isDuplicate) {
+            alert('이미 담은 문제입니다.');
+            return;
+        }
+
+        savedQuestions.push(question);
+        updateSavedListUI();
+    }
+
+    function removeQuestion(index) {
+        savedQuestions.splice(index, 1);
+        updateSavedListUI();
+    }
+
+    function updateSavedListUI() {
+        savedCountBadge.textContent = savedQuestions.length;
+        savedQuestionsList.innerHTML = '';
+
+        if (savedQuestions.length === 0) {
+            savedQuestionsList.innerHTML = '<p class="empty-msg">아직 담은 문제가 없습니다.</p>';
+            return;
+        }
+
+        savedQuestions.forEach((q, index) => {
+            const qDiv = document.createElement('div');
+            qDiv.classList.add('question-item');
+            
+            const removeBtn = document.createElement('button');
+            removeBtn.classList.add('add-save-btn');
+            removeBtn.textContent = '삭제';
+            removeBtn.style.backgroundColor = '#e74c3c';
+            removeBtn.onclick = () => removeQuestion(index);
+            qDiv.appendChild(removeBtn);
+
+            const qText = document.createElement('span');
+            qText.classList.add('question-text');
+            qText.textContent = `${index + 1}. ${q.question}`;
+            qDiv.appendChild(qText);
+
+            if (q.options) {
+                const oList = document.createElement('ul');
+                oList.classList.add('options-list');
+                q.options.forEach(opt => {
+                    const li = document.createElement('li');
+                    li.textContent = opt;
+                    oList.appendChild(li);
+                });
+                qDiv.appendChild(oList);
+            }
+            savedQuestionsList.appendChild(qDiv);
+        });
     }
 
     function showLoading(btn, isLoading) {
@@ -210,11 +278,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             showLoading(generatePredictionBtn, true);
             try {
-                // 1. questions.json에서 문제 유형 패턴 읽어오기
                 const res = await fetch('questions.json');
                 const questionPatterns = await res.json();
                 
-                // AI에게 전달할 프롬프트 구성
                 const prompt = `
                 당신은 영어 시험 출제 위원입니다. 제공된 [지문]을 바탕으로, [기존 유형]의 형식을 참고하여 새로운 기출 예상 문제를 만드세요.
 
@@ -265,13 +331,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     templateContent = "Template context from PDF: " + await extractTextFromPdf(pdfFile);
                 } else if (jsonFile) {
                     const jsonData = await readJsonFile(jsonFile);
-                    if (Array.isArray(jsonData)) {
-                        templateContent = "Template JSON structure: " + JSON.stringify(jsonData.slice(0, 3));
-                    } else {
-                        templateContent = "Template JSON structure: " + JSON.stringify(jsonData);
-                    }
+                    templateContent = "Template JSON structure: " + JSON.stringify(Array.isArray(jsonData) ? jsonData.slice(0, 3) : jsonData);
                 } else {
-                    // Default to questions.json if no file
                     const res = await fetch('questions.json');
                     const defaultData = await res.json();
                     templateContent = "Default template: " + JSON.stringify(defaultData);
@@ -296,6 +357,53 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert(err.message);
             } finally {
                 showLoading(generateBankBtn, false);
+            }
+        });
+    }
+
+    // PDF Export Logic
+    if (exportPdfBtn) {
+        exportPdfBtn.addEventListener('click', async () => {
+            if (savedQuestions.length === 0) {
+                alert('다운로드할 문제가 없습니다. 먼저 문제를 담아주세요.');
+                return;
+            }
+
+            const element = document.getElementById('pdf-export-area');
+            const originalStyle = element.style.height;
+            element.style.height = 'auto'; // Capture full content
+
+            try {
+                const canvas = await html2canvas(element, {
+                    scale: 2,
+                    useCORS: true,
+                    backgroundColor: '#ffffff'
+                });
+                
+                const imgData = canvas.toDataURL('image/png');
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                
+                const imgProps = pdf.getImageProperties(imgData);
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                pdf.save('english_exam_questions.pdf');
+            } catch (err) {
+                console.error('PDF Generation Error:', err);
+                alert('PDF 생성 중 오류가 발생했습니다.');
+            } finally {
+                element.style.height = originalStyle;
+            }
+        });
+    }
+
+    if (clearSavedBtn) {
+        clearSavedBtn.addEventListener('click', () => {
+            if (confirm('담은 모든 문제를 삭제하시겠습니까?')) {
+                savedQuestions = [];
+                updateSavedListUI();
             }
         });
     }
