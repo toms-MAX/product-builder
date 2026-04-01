@@ -52,9 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // File reading helper
-    async function readJsonFile(file) {
-
     const generatedQuestionsContainer = document.getElementById('generated-questions');
     const exportJsonBtn = document.getElementById('export-json');
     let lastGeneratedData = null;
