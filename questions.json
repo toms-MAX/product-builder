@@ -1,16 +1,44 @@
 [
   {
-    "question": "다음 문장의 빈칸에 들어갈 가장 적절한 단어는? 'I am ______ to meet you.'",
-    "options": ["① glad", "② sadly", "③ angry", "④ hungry"],
+    "type": "주제 찾기",
+    "question": "다음 글의 주제로 가장 적절한 것을 고르시오.",
+    "options": ["① The importance of recycling", "② How to save energy at home", "③ History of environmental protection", "④ Different types of renewable energy", "⑤ Benefits of planting trees"],
     "answer": "①",
-    "level": "easy",
-    "topic": "vocabulary"
+    "level": "medium"
   },
   {
-    "question": "다음 중 어법상 어색한 문장은?",
-    "options": ["① She like apples.", "② He is a student.", "③ They are playing soccer.", "④ I have a dog."],
+    "type": "빈칸 추론",
+    "question": "다음 글의 빈칸에 들어갈 말로 가장 적절한 것은?",
+    "options": ["① in contrast", "② therefore", "③ for example", "④ however", "⑤ moreover"],
+    "answer": "④",
+    "level": "hard"
+  },
+  {
+    "type": "내용 일치",
+    "question": "다음 글의 내용과 일치하지 않는 것은?",
+    "options": ["① 소년은 매일 아침 공원에 간다.", "② 소년은 개와 함께 산책을 한다.", "③ 공원에는 커다란 나무들이 많이 있다.", "④ 소년은 공원에서 친구를 만났다.", "⑤ 소년은 오후에 숙제를 시작했다."],
+    "answer": "④",
+    "level": "easy"
+  },
+  {
+    "type": "어법 판단",
+    "question": "다음 중 어법상 어색한 문장을 고르시오.",
+    "options": ["① He enjoys playing the piano.", "② She has lived here for ten years.", "③ I look forward to meet you.", "④ They are used to waking up early.", "⑤ We should have studied harder."],
+    "answer": "③",
+    "level": "medium"
+  },
+  {
+    "type": "심경 파악",
+    "question": "다음 글에 나타난 필자의 심경으로 가장 적절한 것은?",
+    "options": ["① excited and happy", "② bored and tired", "③ nervous and worried", "④ calm and peaceful", "⑤ angry and upset"],
+    "answer": "③",
+    "level": "medium"
+  },
+  {
+    "type": "단어 의미",
+    "question": "밑줄 친 'exhausted'의 문맥상 의미와 가장 유사한 것은?",
+    "options": ["① very tired", "② very hungry", "③ very happy", "④ very surprised", "⑤ very angry"],
     "answer": "①",
-    "level": "medium",
-    "topic": "grammar"
+    "level": "easy"
   }
 ]

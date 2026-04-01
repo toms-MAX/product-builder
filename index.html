@@ -20,20 +20,26 @@
 
         <!-- 기출 예상문제 탭 -->
         <div id="prediction" class="tab-content active">
-            <p>영어 지문(Text/PDF)과 기출문제(JSON/PDF)를 기반으로 예상문제를 생성합니다.</p>
+            <p>분석할 지문을 입력하고 난이도와 문항 수를 설정하세요.</p>
             <div class="form-group">
-                <label for="reading-material">영어 지문 입력 (직접 입력)</label>
-                <textarea id="reading-material" placeholder="분석할 영어 지문을 붙여넣으세요..."></textarea>
+                <label for="reading-material">영어 지문 입력</label>
+                <textarea id="reading-material" placeholder="분석할 영어 지문을 붙여넣으세요..." style="height: 200px;"></textarea>
             </div>
-            <div class="form-group">
-                <label for="prev-exam-pdf">기출문제 (PDF 파일 - 유형 분석용)</label>
-                <input type="file" id="prev-exam-pdf" accept=".pdf">
+            <div class="flex-row">
+                <div class="form-group">
+                    <label for="predict-level">난이도</label>
+                    <select id="predict-level">
+                        <option value="easy">쉬움 (중1 수준)</option>
+                        <option value="medium" selected>보통 (중2~3 수준)</option>
+                        <option value="hard">어려움 (고등 기초 수준)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="predict-count">문제 개수</label>
+                    <input type="number" id="predict-count" min="1" max="10" value="5">
+                </div>
             </div>
-            <div class="form-group">
-                <label for="prev-exam-json">기출문제 (JSON 파일 - 구조 분석용)</label>
-                <input type="file" id="prev-exam-json" accept=".json">
-            </div>
-            <button id="generate-prediction" class="action-btn">예상문제 생성</button>
+            <button id="generate-prediction" class="action-btn">예상문제 생성하기</button>
         </div>
 
         <!-- 문제은행 탭 -->

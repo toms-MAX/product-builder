@@ -196,51 +196,53 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Feature 1: Prediction Logic (AI Integrated)
+    // Feature 1: Prediction Logic (Simplified & AI Integrated)
     if (generatePredictionBtn) {
         generatePredictionBtn.addEventListener('click', async () => {
             const text = readingMaterial.value;
-            const pdfFile = prevExamPdf.files[0];
-            const jsonFile = prevExamJson.files[0];
+            const level = document.getElementById('predict-level').value;
+            const count = parseInt(document.getElementById('predict-count').value);
 
-            if (!text && !pdfFile) {
-                alert('영어 지문을 입력하거나 분석할 PDF 파일을 선택해주세요.');
+            if (!text) {
+                alert('지문을 입력해주세요.');
                 return;
             }
 
             showLoading(generatePredictionBtn, true);
             try {
-                let contextText = text;
-                if (pdfFile) {
-                    const pdfText = await extractTextFromPdf(pdfFile);
-                    contextText = (contextText ? contextText + '\n' : '') + pdfText;
-                }
-
-                let formatHint = "";
-                if (jsonFile) {
-                    const jsonData = await readJsonFile(jsonFile);
-                    formatHint = `Use this JSON structure/style as a template for the questions: ${JSON.stringify(jsonData.slice(0,2))}`;
-                }
-
-                const prompt = `
-                Based on the following English reading material:
-                """
-                ${contextText}
-                """
-                ${formatHint}
+                // 1. questions.json에서 문제 유형 패턴 읽어오기
+                const res = await fetch('questions.json');
+                const questionPatterns = await res.json();
                 
-                Generate 3 prediction questions for a middle school English exam. 
-                Output the result ONLY as a JSON array of objects, each having:
-                - "question": string
-                - "options": array of 4 strings
-                - "answer": string (e.g., "①")
-                Respond in Korean for the question description if appropriate, but keep the reading material's context.
+                // AI에게 전달할 프롬프트 구성
+                const prompt = `
+                당신은 영어 시험 출제 위원입니다. 제공된 [지문]을 바탕으로, [기존 유형]의 형식을 참고하여 새로운 기출 예상 문제를 만드세요.
+
+                [지문]:
+                """
+                ${text}
+                """
+
+                [설정]:
+                - 난이도: ${level} (easy: 중1, medium: 중2~3, hard: 고등기초)
+                - 문제 수: ${count}개
+                - 언어: 질문과 설명은 한국어, 보기와 지문 관련 내용은 영어
+
+                [참고할 기존 문제 유형 및 형식]:
+                ${JSON.stringify(questionPatterns.slice(0, 10))} 
+
+                [요구사항]:
+                - 위 [참고할 기존 문제 유형]의 질문 스타일(빈칸 추론, 주제 찾기, 어법 등)을 골고루 활용하세요.
+                - 지문의 내용을 정확히 반영해야 합니다.
+                - 출력은 반드시 다음 구조의 JSON 배열이어야 합니다 (다른 텍스트 없이 JSON만 출력):
+                [{"question": "...", "options": ["①...", "②...", "③...", "④...", "⑤..."], "answer": "...", "explanation": "..."}]
                 `;
 
                 const questions = await generateWithGemini(prompt);
                 renderQuestions(questions);
             } catch (err) {
-                alert(err.message);
+                console.error(err);
+                alert('오류 발생: ' + err.message);
             } finally {
                 showLoading(generatePredictionBtn, false);
             }
@@ -263,7 +265,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     templateContent = "Template context from PDF: " + await extractTextFromPdf(pdfFile);
                 } else if (jsonFile) {
                     const jsonData = await readJsonFile(jsonFile);
-                    templateContent = "Template JSON structure: " + JSON.stringify(jsonData.slice(0, 3));
+                    if (Array.isArray(jsonData)) {
+                        templateContent = "Template JSON structure: " + JSON.stringify(jsonData.slice(0, 3));
+                    } else {
+                        templateContent = "Template JSON structure: " + JSON.stringify(jsonData);
+                    }
                 } else {
                     // Default to questions.json if no file
                     const res = await fetch('questions.json');
