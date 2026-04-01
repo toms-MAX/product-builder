@@ -1,6 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant initialized');
+    console.log('English Exam Assistant initialized with Gemini AI');
     
+    // API Key (User provided)
+    const GEMINI_API_KEY = 'AIzaSyCCdebA15oPSS5zKy49PSybrCvVSfmdZ24';
+    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
     // Elements
     const themeToggle = document.getElementById('theme-toggle');
     const body = document.body;
@@ -23,11 +27,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const generatedQuestionsContainer = document.getElementById('generated-questions');
     const exportJsonBtn = document.getElementById('export-json');
+    const resultArea = document.getElementById('result-container');
     let lastGeneratedData = null;
 
     // Configure PDF.js worker
     if (typeof pdfjsLib !== 'undefined') {
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    // AI Question Generation Helper
+    async function generateWithGemini(prompt) {
+        try {
+            const response = await fetch(GEMINI_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        temperature: 0.7,
+                        topK: 40,
+                        topP: 0.95,
+                        maxOutputTokens: 2048,
+                        responseMimeType: "application/json",
+                    }
+                })
+            });
+
+            const data = await response.json();
+            if (data.error) throw new Error(data.error.message);
+            
+            const resultText = data.candidates[0].content.parts[0].text;
+            return JSON.parse(resultText);
+        } catch (err) {
+            console.error('Gemini API Error:', err);
+            throw new Error('AI 문제 생성 중 오류가 발생했습니다: ' + err.message);
+        }
     }
 
     // PDF text extraction helper
@@ -42,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const pdf = await pdfjsLib.getDocument(typedarray).promise;
                     let fullText = '';
-                    const maxPages = Math.min(pdf.numPages, 20);
+                    const maxPages = Math.min(pdf.numPages, 10); // Limit for speed
 
                     for (let i = 1; i <= maxPages; i++) {
                         const page = await pdf.getPage(i);
@@ -81,17 +115,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Tab switching logic
+    // Tab switching
     if (tabBtns.length > 0) {
         tabBtns.forEach(btn => {
             btn.addEventListener('click', () => {
                 const tabId = btn.getAttribute('data-tab');
                 const targetContent = document.getElementById(tabId);
-                
                 if (targetContent) {
                     tabBtns.forEach(b => b.classList.remove('active'));
                     tabContents.forEach(c => c.classList.remove('active'));
-                    
                     btn.classList.add('active');
                     targetContent.classList.add('active');
                 }
@@ -118,10 +150,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Render questions to UI
     function renderQuestions(questions) {
         if (!generatedQuestionsContainer) return;
-
         generatedQuestionsContainer.innerHTML = '';
+        
         if (!questions || questions.length === 0) {
-            generatedQuestionsContainer.innerHTML = '<p>생성된 문제가 없습니다.</p>';
+            generatedQuestionsContainer.innerHTML = '<p>문제를 생성할 수 없습니다. 다시 시도해주세요.</p>';
             if (exportJsonBtn) exportJsonBtn.style.display = 'none';
             return;
         }
@@ -145,15 +177,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 qDiv.appendChild(oList);
             }
-
             generatedQuestionsContainer.appendChild(qDiv);
         });
 
         if (exportJsonBtn) exportJsonBtn.style.display = 'block';
         lastGeneratedData = questions;
+        resultArea.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // Feature 1: Prediction Logic
+    function showLoading(btn, isLoading) {
+        if (isLoading) {
+            btn.disabled = true;
+            btn.dataset.originalText = btn.textContent;
+            btn.textContent = 'AI 분석 및 생성 중...';
+        } else {
+            btn.disabled = false;
+            btn.textContent = btn.dataset.originalText;
+        }
+    }
+
+    // Feature 1: Prediction Logic (AI Integrated)
     if (generatePredictionBtn) {
         generatePredictionBtn.addEventListener('click', async () => {
             const text = readingMaterial.value;
@@ -165,28 +208,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            let contextText = text;
-            if (pdfFile) {
-                try {
-                    contextText = (contextText ? contextText + '\n' : '') + await extractTextFromPdf(pdfFile);
-                } catch (err) {
-                    alert(err);
-                    return;
+            showLoading(generatePredictionBtn, true);
+            try {
+                let contextText = text;
+                if (pdfFile) {
+                    const pdfText = await extractTextFromPdf(pdfFile);
+                    contextText = (contextText ? contextText + '\n' : '') + pdfText;
                 }
-            }
 
-            // Mock result
-            renderQuestions([
-                {
-                    question: "[분석 기반] 위 지문에서 강조하는 핵심 내용은 무엇인가요?",
-                    options: ["① 학업의 중요성", "② 건강 관리", "③ 미래 기술", "④ 환경 보호"],
-                    answer: "①"
+                let formatHint = "";
+                if (jsonFile) {
+                    const jsonData = await readJsonFile(jsonFile);
+                    formatHint = `Use this JSON structure/style as a template for the questions: ${JSON.stringify(jsonData.slice(0,2))}`;
                 }
-            ]);
+
+                const prompt = `
+                Based on the following English reading material:
+                """
+                ${contextText}
+                """
+                ${formatHint}
+                
+                Generate 3 prediction questions for a middle school English exam. 
+                Output the result ONLY as a JSON array of objects, each having:
+                - "question": string
+                - "options": array of 4 strings
+                - "answer": string (e.g., "①")
+                Respond in Korean for the question description if appropriate, but keep the reading material's context.
+                `;
+
+                const questions = await generateWithGemini(prompt);
+                renderQuestions(questions);
+            } catch (err) {
+                alert(err.message);
+            } finally {
+                showLoading(generatePredictionBtn, false);
+            }
         });
     }
 
-    // Feature 2: Question Bank Logic
+    // Feature 2: Question Bank Logic (AI Integrated)
     if (generateBankBtn) {
         generateBankBtn.addEventListener('click', async () => {
             const level = levelSelect.value;
@@ -195,34 +256,41 @@ document.addEventListener('DOMContentLoaded', () => {
             const pdfFile = templatePdf ? templatePdf.files[0] : null;
             const jsonFile = templateJson ? templateJson.files[0] : null;
 
-            // 만약 파일이 없으면 기본 questions.json 로드를 시도
-            if (!pdfFile && !jsonFile) {
-                try {
-                    const response = await fetch('questions.json');
-                    const defaultQuestions = await response.json();
-                    const filtered = defaultQuestions.filter(q => q.level === level || q.topic === topic).slice(0, count);
-                    
-                    if (filtered.length > 0) {
-                        renderQuestions(filtered);
-                        return;
-                    }
-                } catch (e) {
-                    console.log('기본 questions.json 로드 실패', e);
+            showLoading(generateBankBtn, true);
+            try {
+                let templateContent = "";
+                if (pdfFile) {
+                    templateContent = "Template context from PDF: " + await extractTextFromPdf(pdfFile);
+                } else if (jsonFile) {
+                    const jsonData = await readJsonFile(jsonFile);
+                    templateContent = "Template JSON structure: " + JSON.stringify(jsonData.slice(0, 3));
+                } else {
+                    // Default to questions.json if no file
+                    const res = await fetch('questions.json');
+                    const defaultData = await res.json();
+                    templateContent = "Default template: " + JSON.stringify(defaultData);
                 }
-                alert('문제 템플릿 파일을 선택하거나 유효한 데이터를 준비해주세요.');
-                return;
-            }
 
-            // 템플릿 기반 생성 로직 (Mock)
-            const transformed = [];
-            for (let i = 0; i < count; i++) {
-                transformed.push({
-                    question: `[${topic.toUpperCase()}] 변형 문제 ${i + 1} (${level})`,
-                    options: ["① 보기 1", "② 보기 2", "③ 보기 3", "④ 보기 4"],
-                    answer: "①"
-                });
+                const prompt = `
+                Using this template for style and structure:
+                """
+                ${templateContent}
+                """
+                
+                Generate ${count} new English exam questions.
+                - Topic: ${topic}
+                - Difficulty Level: ${level}
+                - Output format: JSON array of objects (question, options, answer).
+                Ensure the questions are fresh and different from the template but follow its format.
+                `;
+
+                const questions = await generateWithGemini(prompt);
+                renderQuestions(questions);
+            } catch (err) {
+                alert(err.message);
+            } finally {
+                showLoading(generateBankBtn, false);
             }
-            renderQuestions(transformed);
         });
     }
 
