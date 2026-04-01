@@ -40,5 +40,200 @@
     "options": ["① very tired", "② very hungry", "③ very happy", "④ very surprised", "⑤ very angry"],
     "answer": "①",
     "level": "easy"
+  },
+  {
+    "type": "내용 일치",
+    "question": "다음 대화의 내용과 일치하는 것은?",
+    "options": [
+      "① Ms. Kim tells Peter to put ice on his back.",
+      "② Ms. Kim advises Chris to pull out his tooth.",
+      "③ Peter doesn’t have to do stretching exercises.",
+      "④ Sam can’t walk because his pain is too serious.",
+      "⑤ Ms. Kim gives different useful tips to each person."
+    ],
+    "answer": "⑤",
+    "level": "easy"
+  },
+  {
+    "type": "어휘 의미",
+    "question": "다음 중 단어의 영어 뜻풀이가 옳은 것은?",
+    "options": [
+      "① blink: to keep one's eyes closed",
+      "② text: to send someone a voice message",
+      "③ prevent: to stop something from happening",
+      "④ pain: a device that warns someone of danger",
+      "⑤ zombie: a dead body that often appears in the real life"
+    ],
+    "answer": "③",
+    "level": "easy"
+  },
+  {
+    "type": "어법 오류 개수",
+    "question": "밑줄 친 ⓐ~ⓕ 중 어법상 옳지 않은 문장의 개수는?",
+    "options": [
+      "① 1",
+      "② 2",
+      "③ 3",
+      "④ 4",
+      "⑤ 5"
+    ],
+    "answer": "③",
+    "level": "medium"
+  },
+  {
+    "type": "내용 일치 판단 (T/F)",
+    "question": "글의 내용과 일치하면 T, 일치하지 않으면 F로 표시했을 때 옳은 것만 고른 것은?",
+    "options": [
+      "① a, b, c",
+      "② b, c, d",
+      "③ b, d, e",
+      "④ a, d, e",
+      "⑤ c, d, e"
+    ],
+    "answer": "②",
+    "level": "medium"
+  },
+  {
+    "type": "어법 판단",
+    "question": "다음 중 어법상 옳은 문장을 모두 고른 것은?",
+    "options": [
+      "① a, b, d",
+      "② b, c, d",
+      "③ b, e, f",
+      "④ c, d, e",
+      "⑤ c, e, f"
+    ],
+    "answer": "③",
+    "level": "medium"
+  },
+  {
+    "type": "어법 판단",
+    "question": "밑줄 친 ⓐ~ⓕ 중 어법상 옳은 문장을 고른 것은?",
+    "options": [
+      "① a, c",
+      "② b, e",
+      "③ d, e",
+      "④ d, f",
+      "⑤ e, f"
+    ],
+    "answer": "④",
+    "level": "medium"
+  },
+  {
+    "type": "빈칸 어휘 추론",
+    "question": "글의 빈칸 (A)~(E)에 들어갈 말로 가장 적절한 것은?",
+    "options": [
+      "① (A) Especially",
+      "② (B) up",
+      "③ (C) get",
+      "④ (D) during",
+      "⑤ (E) If"
+    ],
+    "answer": "⑤",
+    "level": "medium"
+  },
+  {
+    "type": "내용 이해",
+    "question": "According to the passage, what is one of the health problems smartphones can cause?",
+    "options": [
+      "① smombie",
+      "② shoulder pain",
+      "③ text neck",
+      "④ drug addiction",
+      "⑤ too much blinking"
+    ],
+    "answer": "③",
+    "level": "easy"
+  },
+  {
+    "type": "내용 일치",
+    "question": "위 글에 제시된 문제(P)와 그에 대한 조언(A)으로 가장 적절한 것은?",
+    "options": [
+      "① (A)",
+      "② (B)",
+      "③ (C)",
+      "④ (D)",
+      "⑤ (E)"
+    ],
+    "answer": "④",
+    "level": "medium"
+  },
+  {
+    "type": "어휘 쓰기",
+    "question": "다음 우리말과 일치하도록 빈칸에 들어갈 말을 고르세요.",
+    "options": [
+      "① sore throat / fever",
+      "② stomachache / cold",
+      "③ headache / cough",
+      "④ backache / flu",
+      "⑤ toothache / pain"
+    ],
+    "answer": "①",
+    "level": "easy"
+  },
+  {
+    "type": "영작",
+    "question": "다음 우리말과 일치하는 영어 문장은?",
+    "options": [
+      "① She named her daughter April.",
+      "② She called April her sister.",
+      "③ She met her daughter in April.",
+      "④ She likes the month April.",
+      "⑤ She wrote a letter in April."
+    ],
+    "answer": "①",
+    "level": "medium"
+  },
+  {
+    "type": "문장 완성",
+    "question": "글의 흐름에 맞게 들어갈 문장은?",
+    "options": [
+      "① It was the dog she wanted.",
+      "② She did not like the dog.",
+      "③ The dog was very big.",
+      "④ She wanted a different animal.",
+      "⑤ The dog ran away."
+    ],
+    "answer": "①",
+    "level": "medium"
+  },
+  {
+    "type": "관계대명사 문장 연결",
+    "question": "관계대명사(that 제외)를 사용하여 두 문장을 연결한 것으로 옳은 것은?",
+    "options": [
+      "① The couple whom I met in London came to visit me.",
+      "② The couple which I met came to visit me.",
+      "③ The couple who London met came to visit me.",
+      "④ The couple where I met came to visit me.",
+      "⑤ The couple what I met came to visit me."
+    ],
+    "answer": "①",
+    "level": "hard"
+  },
+  {
+    "type": "어법 수정",
+    "question": "다음 글에서 어법상 어색한 문장을 바르게 고친 것으로 옳은 것은?",
+    "options": [
+      "① There are some animals that have world records in this book.",
+      "② Ernestine is the pig which have lived long.",
+      "③ Alex is African Grey Parrot who can use words.",
+      "④ You will find amazing facts what you don't know.",
+      "⑤ This book have many animals."
+    ],
+    "answer": "①",
+    "level": "hard"
+  },
+  {
+    "type": "어휘 관계",
+    "question": "다음 중 짝지어진 단어의 관계가 같지 않은 것은?",
+    "options": [
+      "① tip : advice = collect : gather",
+      "② warn : warning = fly : flight",
+      "③ safe : safety = exhibit : exhibition",
+      "④ wise : unwise = increase : decrease",
+      "⑤ same : different = simple : complicated"
+    ],
+    "answer": "①",네
+    "level": "medium"
   }
 ]
