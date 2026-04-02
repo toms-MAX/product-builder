@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.5.1 initialized (Exact Replication)');
+    console.log('English Exam Assistant v2.6.0 initialized (Multi-Pattern Learning)');
     
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (examStyleProfile) {
         styleProfileDisplay.style.display = 'block';
-        styleProfileDisplay.innerHTML = `✨ <strong>학습된 문제 형태:</strong><br>${examStyleProfile.substring(0, 100)}...`;
+        styleProfileDisplay.innerHTML = `✨ <strong>학습된 멀티 패턴 가이드:</strong><br>${examStyleProfile.substring(0, 150)}...`;
     }
     apiKeyInput.value = currentApiKey === DEFAULT_KEY ? '' : currentApiKey;
 
@@ -40,17 +40,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 1. 이미지 형태 복제 분석 (Vision)
+    // 1. 다중 이미지 패턴 학습 기능 (Multi-Vision)
     analyzeStyleBtn.addEventListener('click', async () => {
-        const file = examImageInput.files[0];
-        if (!file) return alert('참고할 문제 이미지를 선택해주세요.');
+        const files = examImageInput.files;
+        if (files.length === 0) return alert('참고할 문제 이미지를 하나 이상 선택해주세요.');
         if (!currentApiKey) return alert('API 키를 먼저 설정해주세요.');
 
         analyzeStyleBtn.disabled = true;
-        analyzeStyleBtn.textContent = '문제 형태 분석 중...';
+        analyzeStyleBtn.textContent = `${files.length}개의 이미지 분석 중...`;
 
         try {
-            const base64Image = await toBase64(file);
+            const imageContents = [];
+            for (let i = 0; i < files.length; i++) {
+                const base64 = await toBase64(files[i]);
+                imageContents.push({ type: "image_url", image_url: { url: base64 } });
+            }
+
             const response = await fetch(API_URL, {
                 method: 'POST',
                 headers: {
@@ -63,8 +68,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         {
                             role: "user",
                             content: [
-                                { type: "text", text: "이 이미지에 나온 문제의 '형태'와 '출제 방식'을 정밀 분석해줘. 예를 들어, '지문 속에 ⓐ~ⓔ 기호가 있고 어법상 틀린 것을 모두 고르는 형태'인지, '특정 문장을 [1]~[5] 중 넣는 형태'인지 등을 파악해서, 내가 나중에 다른 지문을 주었을 때 똑같은 '형태'로 문제를 낼 수 있도록 출제 가이드를 작성해줘." },
-                                { type: "image_url", image_url: { url: base64Image } }
+                                { type: "text", text: "제공된 모든 이미지에 있는 영어 문제들을 분석해줘. 각 이미지마다 어떤 독특한 '문제 형태'와 '출제 기법(예: 문장 삽입 위치 표시법, 어법 오류 기호 등)'이 있는지 모두 추출해서, 나중에 내가 새로운 지문을 주었을 때 이 모든 유형들을 골고루 활용해 출제할 수 있도록 종합 가이드를 작성해줘." },
+                                ...imageContents
                             ]
                         }
                     ]
@@ -78,13 +83,13 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('exam_style_profile', analysis);
             examStyleProfile = analysis;
             styleProfileDisplay.style.display = 'block';
-            styleProfileDisplay.innerHTML = `✨ <strong>학습된 문제 형태:</strong><br>${analysis}`;
-            alert('문제 형태 학습 완료! 이제 어떤 지문을 넣어도 이 형태대로 출제됩니다.');
+            styleProfileDisplay.innerHTML = `✨ <strong>학습된 멀티 패턴 가이드:</strong><br>${analysis}`;
+            alert(`${files.length}개의 이미지로부터 문제 패턴 학습 완료!`);
         } catch (err) {
             alert('분석 실패: ' + err.message);
         } finally {
             analyzeStyleBtn.disabled = false;
-            analyzeStyleBtn.textContent = '이미지에서 출제 형태 학습하기';
+            analyzeStyleBtn.textContent = '선택한 모든 이미지 패턴 학습하기';
         }
     });
 
@@ -92,12 +97,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentApiKey) throw new Error('API 키를 먼저 설정해주세요!');
 
         const systemMessage = `당신은 대한민국 최고의 영어 내신 시험 출제 전문가입니다.
-        ${examStyleProfile ? `\n### 중요: 다음 [학습된 문제 형태]를 반드시 복제하여 출제하십시오:\n${examStyleProfile}` : ''}
+        ${examStyleProfile ? `\n### 중요: 다음 [학습된 멀티 패턴 가이드]에 포함된 유형들을 적극 활용하여 출제하십시오:\n${examStyleProfile}` : ''}
         
         ### 출제 원칙
-        1. **형태 복제**: 사용자가 제공한 이미지 분석 결과가 있다면, 그 문제의 '형태(질문 방식, 보기 구성, 지문 조작)'를 100% 동일하게 유지하며 새로운 지문의 내용만 반영하십시오.
-        2. **지문 동시 제공**: 각 문제마다 풀이에 필요한 변형된 지문(passage_context)을 반드시 포함하십시오.
-        3. **무오류 검증**: 5지선다 여부, 정답의 유일성, 지문 내 기호 표시 누락 등을 최종 검토하십시오.`;
+        1. **다양한 패턴 복제**: 학습된 가이드에 있는 여러 문제 형태(기호 사용법, 질문 방식 등)를 골고루 섞어 새로운 지문에 적용하십시오.
+        2. **지문 동시 제공**: 각 문제마다 풀이에 필요한 변형 지문(passage_context)을 반드시 포함하십시오.
+        3. **무오류 검증**: 5지선다 여부, 정답의 유일성, 기호 표시 누락 등을 최종 검토하십시오.`;
 
         try {
             const response = await fetch(API_URL, {
@@ -112,7 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         { role: "system", content: systemMessage },
                         { role: "user", content: prompt }
                     ],
-                    temperature: 0.3, // 일관성을 위해 더 낮춤
+                    temperature: 0.35,
                     response_format: { type: "json_object" }
                 })
             });
@@ -136,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
             qDiv.innerHTML = `
                 <div style="margin-bottom: 10px;">
                     <span class="badge" style="background: #3498db; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 5px;">${q.type || '커스텀 유형'}</span>
-                    <span class="badge" style="background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em;">형태 복제 적용됨</span>
+                    <span class="badge" style="background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em;">멀티 패턴 적용</span>
                 </div>
                 <button class="add-save-btn">담기</button>
                 
@@ -151,9 +156,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 </ul>
                 
                 <details style="margin-top: 20px; font-size: 0.85em; color: #27ae60; background: #f0fff4; padding: 12px; border-radius: 6px; border: 1px solid #c3e6cb;">
-                    <summary style="cursor: pointer; font-weight: bold;">정답 및 출제 근거 확인</summary>
+                    <summary style="cursor: pointer; font-weight: bold;">정답 및 해설</summary>
                     <p style="margin-top: 10px; font-size: 1.1em;"><strong>정답: ${q.answer}</strong></p>
-                    <p style="color: #666; font-size: 0.9em; line-height: 1.5;">${q.explanation || '이미지의 문제 형태를 바탕으로 지문의 논리 구조를 분석하여 출제되었습니다.'}</p>
+                    <p style="color: #666; font-size: 0.9em; line-height: 1.5;">${q.explanation || '학습된 멀티 패턴 중 가장 적합한 형식을 선택하여 출제되었습니다.'}</p>
                 </details>
             `;
             qDiv.querySelector('button').onclick = () => {
@@ -195,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showLoading(btn, isLoading) {
         btn.disabled = isLoading;
-        btn.textContent = isLoading ? '형태 복제 중...' : btn.dataset.oldText || btn.textContent;
+        btn.textContent = isLoading ? '멀티 패턴 분석 중...' : btn.dataset.oldText || btn.textContent;
         if (isLoading) btn.dataset.oldText = btn.textContent;
     }
 
@@ -208,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showLoading(e.target, true);
         try {
             const prompt = `다음 지문을 바탕으로 ${level} 난이도의 문제를 ${count}개 출제하세요. 
-            반드시 학습된 이미지의 문제 형태를 그대로 복제하십시오.
+            학습된 멀티 패턴 가이드에 있는 다양한 유형들을 고르게 적용하십시오.
             지문:
             ${text}`;
             const questions = await generateWithAI(prompt);
@@ -226,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const topic = document.getElementById('topic-select').value;
             const level = document.getElementById('level-select').value;
             const count = document.getElementById('question-count').value;
-            const prompt = `Generate ${count} English exam questions about ${topic} for ${level} level. 5 options each.`;
+            const prompt = `Generate ${count} exam questions about ${topic} for ${level} level. 5 options each.`;
             const questions = await generateWithAI(prompt);
             renderQuestions(questions);
         } catch (err) {
