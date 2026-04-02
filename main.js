@@ -1,9 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.8.1 initialized (Parsing & Logic Fix)');
+    console.log('English Exam Assistant v2.8.2 initialized (Logic & UI Stability)');
     
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
-    // 가장 최신 및 안정적인 모델 우선 배치
+    // API에서 확인된 최신 및 가용 모델 위주로 구성
     const VISION_MODELS = [
         'meta-llama/llama-4-scout-17b-16e-instruct',
         'llama-3.2-90b-vision-preview',
@@ -74,11 +74,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    dropZone.addEventListener('click', () => examImageInput.click());
-    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-    dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
-    examImageInput.addEventListener('change', (e) => handleFiles(e.target.files));
+    if (dropZone) {
+        dropZone.addEventListener('click', () => examImageInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+    }
+    
+    if (examImageInput) {
+        examImageInput.addEventListener('change', (e) => handleFiles(e.target.files));
+    }
 
     window.addEventListener('paste', (e) => {
         const items = (e.clipboardData || e.originalEvent.clipboardData).items;
@@ -88,6 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function handleFiles(files) {
+        if (!files) return;
         for (const file of files) {
             if (file.type.startsWith('image/')) {
                 const optimizedDataUrl = await optimizeImage(file);
@@ -98,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updatePreview() {
+        if (!previewContainer) return;
         previewContainer.innerHTML = '';
         droppedFiles.forEach((dataUrl, index) => {
             const item = document.createElement('div');
@@ -112,52 +119,63 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    analyzeStyleBtn.addEventListener('click', async () => {
-        if (droppedFiles.length === 0) return alert('이미지를 추가해주세요.');
-        if (!currentApiKey) return alert('API 키를 먼저 설정해주세요.');
+    if (analyzeStyleBtn) {
+        analyzeStyleBtn.addEventListener('click', async () => {
+            if (droppedFiles.length === 0) return alert('참고할 이미지를 추가해주세요.');
+            if (!currentApiKey) return alert('API 키를 먼저 설정해주세요.');
 
-        analyzeStyleBtn.disabled = true;
-        analyzeStyleBtn.textContent = '패턴 분석 중...';
+            analyzeStyleBtn.disabled = true;
+            analyzeStyleBtn.textContent = '패턴 분석 중...';
 
-        const imageContents = droppedFiles.map(dataUrl => ({ type: "image_url", image_url: { url: dataUrl } }));
-        let success = false;
-        for (const modelId of VISION_MODELS) {
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: modelId,
-                        messages: [{
-                            role: "user",
-                            content: [
-                                { type: "text", text: "이 이미지의 영어 문제 형태를 분석해줘. 질문의 의도, 보기를 구성하는 방식, 지문 내의 기호 활용법 등을 파악해서 가이드를 작성해줘." },
-                                ...imageContents
-                            ]
-                        }]
-                    })
-                });
-                const responseData = await response.json();
-                if (response.ok) {
-                    examStyleProfile = responseData.choices[0].message.content;
-                    localStorage.setItem('exam_style_profile', examStyleProfile);
-                    styleProfileDisplay.style.display = 'block';
-                    alert('문제 형태 학습 완료!');
-                    success = true;
-                    break;
+            const imageContents = droppedFiles.map(dataUrl => ({ type: "image_url", image_url: { url: dataUrl } }));
+            let success = false;
+            let lastError = '';
+
+            for (const modelId of VISION_MODELS) {
+                try {
+                    console.log(`Trying Vision Model: ${modelId}`);
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: modelId,
+                            messages: [{
+                                role: "user",
+                                content: [
+                                    { type: "text", text: "이 이미지의 영어 문제 형태를 분석해줘. 질문의 의도, 보기를 구성하는 방식, 지문 내의 기호 활용법 등을 파악해서 가이드를 작성해줘." },
+                                    ...imageContents
+                                ]
+                            }]
+                        })
+                    });
+                    const responseData = await response.json();
+                    if (response.ok) {
+                        examStyleProfile = responseData.choices[0].message.content;
+                        localStorage.setItem('exam_style_profile', examStyleProfile);
+                        styleProfileDisplay.style.display = 'block';
+                        alert('문제 형태 학습 완료!');
+                        success = true;
+                        break;
+                    } else {
+                        lastError = responseData.error?.message || '알 수 없는 오류';
+                        console.warn(`Model ${modelId} failed: ${lastError}`);
+                    }
+                } catch (err) {
+                    lastError = err.message;
+                    console.error(`Error with model ${modelId}:`, err);
                 }
-            } catch (err) { console.error(err); }
-        }
-        if (!success) alert('이미지 분석 실패. API 키 또는 파일 용량을 확인하세요.');
-        analyzeStyleBtn.disabled = false;
-        analyzeStyleBtn.textContent = '추가된 모든 패턴 학습하기';
-    });
+            }
+            if (!success) alert('이미지 분석 실패: ' + lastError);
+            analyzeStyleBtn.disabled = false;
+            analyzeStyleBtn.textContent = '추가된 모든 패턴 학습하기';
+        });
+    }
 
     async function generateWithAI(passage) {
         if (!currentApiKey) throw new Error('API 키 설정 필요');
         
         const systemMessage = `당신은 대한민국 최고의 영어 교육 전문가이자 내신 출제 위원입니다.
-        반드시 JSON 형식으로만 응답하십시오.
+        반드시 JSON 형식으로만 응답하십시오. 응답은 반드시 유효한 JSON 객체여야 하며, 다른 설명 텍스트는 포함하지 마십시오.
         {
           "passage_header": "다음 글을 읽고 물음에 답하시오.",
           "passage_body": "...",
@@ -173,39 +191,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         ${examStyleProfile ? `\n[참고할 스타일]:\n${examStyleProfile}` : ''}`;
 
-        try {
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: MODEL_NAME,
-                    messages: [
-                        { role: "system", content: systemMessage },
-                        { role: "user", content: `지문:\n${passage}\n\n위 지문을 바탕으로 고퀄리티 문제 세트를 만드십시오.` }
-                    ],
-                    temperature: 0.4,
-                    response_format: { type: "json_object" }
-                })
-            });
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: MODEL_NAME,
+                messages: [
+                    { role: "system", content: systemMessage },
+                    { role: "user", content: `지문:\n${passage}\n\n위 지문을 바탕으로 고퀄리티 문제 세트를 만드십시오.` }
+                ],
+                temperature: 0.4,
+                response_format: { type: "json_object" }
+            })
+        });
 
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error?.message || '생성 실패');
-            
-            let content = data.choices[0].message.content;
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error?.message || '생성 실패');
+        
+        let content = data.choices[0].message.content;
+        console.log("Raw AI Content:", content);
+
+        try {
             // Robust JSON Parsing: 텍스트가 섞여 들어올 경우 대비
             const jsonMatch = content.match(/\{[\s\S]*\}/);
             if (jsonMatch) content = jsonMatch[0];
-            
             return JSON.parse(content);
         } catch (err) {
-            console.error("AI Generation Error:", err);
-            throw err;
+            console.error("AI JSON Parsing Error:", err);
+            throw new Error("AI 응답을 해석할 수 없습니다. 형식이 올바르지 않습니다.");
         }
     }
 
     function renderExamSet(set) {
+        if (!generatedQuestionsContainer) return;
         generatedQuestionsContainer.innerHTML = '';
-        if (!set || !set.questions) throw new Error("유효하지 않은 데이터 형식입니다.");
+        if (!set || !set.questions || !Array.isArray(set.questions)) {
+            generatedQuestionsContainer.innerHTML = '<p style="color:red">데이터 형식이 올바르지 않습니다.</p>';
+            return;
+        }
 
         const setDiv = document.createElement('div');
         setDiv.className = 'exam-set-container';
@@ -215,7 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="set-header" style="font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px;">
                 ${set.passage_header || '다음 글을 읽고 물음에 답하시오.'}
             </div>
-            <div class="set-passage" style="line-height: 1.8; font-size: 1.1em; margin-bottom: 30px; white-space: pre-wrap; padding: 15px; background: #f9f9f9; border-radius: 4px;">${set.passage_body}</div>
+            <div class="set-passage" style="line-height: 1.8; font-size: 1.1em; margin-bottom: 30px; white-space: pre-wrap; padding: 15px; background: #f9f9f9; border-radius: 4px;">${set.passage_body || ''}</div>
             <div class="set-questions"></div>
         `;
 
@@ -252,6 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateSavedListUI() {
+        if (!savedCountBadge || !savedQuestionsList) return;
         savedCountBadge.textContent = savedQuestions.length;
         savedQuestionsList.innerHTML = savedQuestions.length ? '' : '<p class="empty-msg">아직 담은 문제가 없습니다.</p>';
         savedQuestions.forEach((q, index) => {
@@ -268,48 +292,60 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    document.getElementById('generate-prediction').addEventListener('click', async (e) => {
-        const text = document.getElementById('reading-material').value;
-        if (!text.trim()) return alert('지문을 입력하세요.');
-        
-        const oldText = e.target.textContent;
-        e.target.disabled = true;
-        e.target.textContent = '문제 세트 구성 중...';
-        
-        try {
-            const examSet = await generateWithAI(text);
-            renderExamSet(examSet);
-        } catch (err) {
-            alert('출제 실패: ' + err.message);
-        } finally {
-            e.target.disabled = false;
-            e.target.textContent = oldText;
-        }
-    });
+    const generatePredBtn = document.getElementById('generate-prediction');
+    if (generatePredBtn) {
+        generatePredBtn.addEventListener('click', async (e) => {
+            const text = document.getElementById('reading-material').value;
+            if (!text.trim()) return alert('지문을 입력하세요.');
+            
+            const oldText = e.target.textContent;
+            e.target.disabled = true;
+            e.target.textContent = '문제 세트 구성 중...';
+            
+            try {
+                const examSet = await generateWithAI(text);
+                renderExamSet(examSet);
+            } catch (err) {
+                alert('출제 실패: ' + err.message);
+            } finally {
+                e.target.disabled = false;
+                e.target.textContent = oldText;
+            }
+        });
+    }
 
-    document.getElementById('export-pdf').onclick = async () => {
-        if (savedQuestions.length === 0) return alert('담은 문제가 없습니다.');
-        const canvas = await html2canvas(document.getElementById('pdf-export-area'), { scale: 2 });
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 210, (canvas.height * 210) / canvas.width);
-        pdf.save('english_exam.pdf');
-    };
+    const exportPdfBtn = document.getElementById('export-pdf');
+    if (exportPdfBtn) {
+        exportPdfBtn.onclick = async () => {
+            if (savedQuestions.length === 0) return alert('담은 문제가 없습니다.');
+            const canvas = await html2canvas(document.getElementById('pdf-export-area'), { scale: 2 });
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 210, (canvas.height * 210) / canvas.width);
+            pdf.save('english_exam.pdf');
+        };
+    }
 
-    document.getElementById('clear-saved').onclick = () => { if (confirm('비울까요?')) { savedQuestions = []; updateSavedListUI(); } };
+    const clearSavedBtn = document.getElementById('clear-saved');
+    if (clearSavedBtn) {
+        clearSavedBtn.onclick = () => { if (confirm('비울까요?')) { savedQuestions = []; updateSavedListUI(); } };
+    }
     
     if (localStorage.getItem('theme') === 'dark') body.classList.add('dark-mode');
-    themeToggle.addEventListener('click', () => {
-        body.classList.toggle('dark-mode');
-        localStorage.setItem('theme', body.classList.contains('dark-mode') ? 'dark' : 'light');
-    });
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark-mode');
+            localStorage.setItem('theme', body.classList.contains('dark-mode') ? 'dark' : 'light');
+        });
+    }
 
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             tabBtns.forEach(b => b.classList.remove('active'));
             tabContents.forEach(c => c.classList.remove('active'));
             btn.classList.add('active');
-            document.getElementById(btn.getAttribute('data-tab')).classList.add('active');
+            const targetContent = document.getElementById(btn.getAttribute('data-tab'));
+            if (targetContent) targetContent.classList.add('active');
         });
     });
 });
