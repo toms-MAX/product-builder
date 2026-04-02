@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.3.0 initialized (Groq API)');
+    console.log('English Exam Assistant v2.3.1 initialized (Groq API)');
     
     // 기본 설정 (Groq API)
     const DEFAULT_KEY = ''; 
