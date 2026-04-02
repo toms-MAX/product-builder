@@ -1,10 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
     console.log('English Exam Assistant initialized with Gemini AI');
     
-    // API Key (User provided)
+    // API Key
     const GEMINI_API_KEY = 'AIzaSyCCdebA15oPSS5zKy49PSybrCvVSfmdZ24';
-    // Use v1 for stability and standard gemini-1.5-flash model name
-    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // Use v1beta and gemini-1.5-flash which is the most widely compatible combination
+    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     // Elements
     const themeToggle = document.getElementById('theme-toggle');
@@ -57,18 +57,34 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             const data = await response.json();
-            if (data.error) throw new Error(data.error.message);
+            
+            // Handle common model-not-found error by retrying with a different model name if needed
+            if (data.error) {
+                if (data.error.message.includes('not found') || data.error.message.includes('not supported')) {
+                    console.log('Retrying with alternative model name...');
+                    // Attempt fallback to gemini-pro if flash fails
+                    const FALLBACK_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+                    const fallbackRes = await fetch(FALLBACK_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }]
+                        })
+                    });
+                    const fallbackData = await fallbackRes.json();
+                    if (fallbackData.error) throw new Error(fallbackData.error.message);
+                    return JSON.parse(fallbackData.candidates[0].content.parts[0].text.replace(/```json/g, '').replace(/```/g, '').trim());
+                }
+                throw new Error(data.error.message);
+            }
             
             let resultText = data.candidates[0].content.parts[0].text;
-            
-            // Robust JSON extraction
+            // Extract JSON array robustly
             const startIdx = resultText.indexOf('[');
             const endIdx = resultText.lastIndexOf(']');
-            
             if (startIdx !== -1 && endIdx !== -1) {
                 resultText = resultText.substring(startIdx, endIdx + 1);
             }
-            
             return JSON.parse(resultText);
         } catch (err) {
             console.error('Gemini API Error:', err);
@@ -88,7 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const pdf = await pdfjsLib.getDocument(typedarray).promise;
                     let fullText = '';
-                    const maxPages = Math.min(pdf.numPages, 10); // Limit for speed
+                    const maxPages = Math.min(pdf.numPages, 10);
 
                     for (let i = 1; i <= maxPages; i++) {
                         const page = await pdf.getPage(i);
@@ -96,7 +112,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         const pageText = textContent.items.map(item => item.str).join(' ');
                         fullText += pageText + '\n';
                     }
-                    // Filter out Korean characters
                     const filteredText = fullText.replace(/[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/g, '').replace(/\s+/g, ' ').trim();
                     resolve(filteredText);
                 } catch (err) {
@@ -207,13 +222,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Save/Select Question logic
     function saveQuestion(question) {
-        // Prevent duplicates
         const isDuplicate = savedQuestions.some(q => q.question === question.question);
         if (isDuplicate) {
             alert('이미 담은 문제입니다.');
             return;
         }
-
         savedQuestions.push(question);
         updateSavedListUI();
     }
@@ -226,28 +239,23 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateSavedListUI() {
         savedCountBadge.textContent = savedQuestions.length;
         savedQuestionsList.innerHTML = '';
-
         if (savedQuestions.length === 0) {
             savedQuestionsList.innerHTML = '<p class="empty-msg">아직 담은 문제가 없습니다.</p>';
             return;
         }
-
         savedQuestions.forEach((q, index) => {
             const qDiv = document.createElement('div');
             qDiv.classList.add('question-item');
-            
             const removeBtn = document.createElement('button');
             removeBtn.classList.add('add-save-btn');
             removeBtn.textContent = '삭제';
             removeBtn.style.backgroundColor = '#e74c3c';
             removeBtn.onclick = () => removeQuestion(index);
             qDiv.appendChild(removeBtn);
-
             const qText = document.createElement('span');
             qText.classList.add('question-text');
             qText.textContent = `${index + 1}. ${q.question}`;
             qDiv.appendChild(qText);
-
             if (q.options) {
                 const oList = document.createElement('ul');
                 oList.classList.add('options-list');
@@ -273,50 +281,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Feature 1: Prediction Logic (Simplified & AI Integrated)
+    // Feature 1: Prediction Logic
     if (generatePredictionBtn) {
         generatePredictionBtn.addEventListener('click', async () => {
             const text = readingMaterial.value;
             const level = document.getElementById('predict-level').value;
             const count = parseInt(document.getElementById('predict-count').value);
-
             if (!text) {
                 alert('지문을 입력해주세요.');
                 return;
             }
-
             showLoading(generatePredictionBtn, true);
             try {
                 const res = await fetch('questions.json');
                 const questionPatterns = await res.json();
-                
                 const prompt = `
                 당신은 영어 시험 출제 위원입니다. 제공된 [지문]을 바탕으로, [기존 유형]의 형식을 참고하여 새로운 기출 예상 문제를 만드세요.
-
-                [지문]:
-                """
-                ${text}
-                """
-
-                [설정]:
-                - 난이도: ${level} (easy: 중1, medium: 중2~3, hard: 고등기초)
-                - 문제 수: ${count}개
-                - 언어: 질문과 설명은 한국어, 보기와 지문 관련 내용은 영어
-
-                [참고할 기존 문제 유형 및 형식]:
-                ${JSON.stringify(questionPatterns.slice(0, 10))} 
-
-                [요구사항]:
-                - 위 [참고할 기존 문제 유형]의 질문 스타일(빈칸 추론, 주제 찾기, 어법 등)을 골고루 활용하세요.
-                - 지문의 내용을 정확히 반영해야 합니다.
-                - 출력은 반드시 다음 구조의 JSON 배열이어야 합니다 (다른 텍스트 없이 JSON만 출력):
-                [{"question": "...", "options": ["①...", "②...", "③...", "④...", "⑤..."], "answer": "...", "explanation": "..."}]
+                [지문]: """${text}"""
+                [설정]: 난이도: ${level}, 문제 수: ${count}개
+                [참고 형식]: ${JSON.stringify(questionPatterns.slice(0, 5))}
+                반드시 JSON 배열 형식만 출력하세요: [{"question": "...", "options": ["①...", "②...", "③...", "④...", "⑤..."], "answer": "...", "explanation": "..."}]
                 `;
-
                 const questions = await generateWithGemini(prompt);
                 renderQuestions(questions);
             } catch (err) {
-                console.error(err);
                 alert('오류 발생: ' + err.message);
             } finally {
                 showLoading(generatePredictionBtn, false);
@@ -324,43 +312,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Feature 2: Question Bank Logic (AI Integrated)
+    // Feature 2: Question Bank Logic
     if (generateBankBtn) {
         generateBankBtn.addEventListener('click', async () => {
             const level = levelSelect.value;
             const topic = topicSelect.value;
             const count = parseInt(questionCount.value);
-            const pdfFile = templatePdf ? templatePdf.files[0] : null;
-            const jsonFile = templateJson ? templateJson.files[0] : null;
-
             showLoading(generateBankBtn, true);
             try {
-                let templateContent = "";
-                if (pdfFile) {
-                    templateContent = "Template context from PDF: " + await extractTextFromPdf(pdfFile);
-                } else if (jsonFile) {
-                    const jsonData = await readJsonFile(jsonFile);
-                    templateContent = "Template JSON structure: " + JSON.stringify(Array.isArray(jsonData) ? jsonData.slice(0, 3) : jsonData);
-                } else {
-                    const res = await fetch('questions.json');
-                    const defaultData = await res.json();
-                    templateContent = "Default template: " + JSON.stringify(defaultData);
-                }
-
-                const prompt = `
-                Using this template for style and structure:
-                """
-                ${templateContent}
-                """
-                
-                Generate ${count} new English exam questions.
-                - Topic: ${topic}
-                - Difficulty Level: ${level}
-                - Output format: JSON array of objects (question, options, answer).
-                Ensure the questions are fresh and different from the template but follow its format.
-                Output should be a pure JSON array starting with '[' and ending with ']'.
-                `;
-
+                const prompt = `Generate ${count} English exam questions about ${topic} with ${level} difficulty level in JSON array format.`;
                 const questions = await generateWithGemini(prompt);
                 renderQuestions(questions);
             } catch (err) {
@@ -375,60 +335,41 @@ document.addEventListener('DOMContentLoaded', () => {
     if (exportPdfBtn) {
         exportPdfBtn.addEventListener('click', async () => {
             if (savedQuestions.length === 0) {
-                alert('다운로드할 문제가 없습니다. 먼저 문제를 담아주세요.');
+                alert('다운로드할 문제가 없습니다.');
                 return;
             }
-
             const element = document.getElementById('pdf-export-area');
-            const originalStyle = element.style.height;
-            element.style.height = 'auto'; // Capture full content
-
             try {
-                const canvas = await html2canvas(element, {
-                    scale: 2,
-                    useCORS: true,
-                    backgroundColor: '#ffffff'
-                });
-                
+                const canvas = await html2canvas(element, { scale: 2 });
                 const imgData = canvas.toDataURL('image/png');
                 const { jsPDF } = window.jspdf;
                 const pdf = new jsPDF('p', 'mm', 'a4');
-                
-                const imgProps = pdf.getImageProperties(imgData);
                 const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-                
+                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-                pdf.save('english_exam_questions.pdf');
+                pdf.save('english_exam.pdf');
             } catch (err) {
-                console.error('PDF Generation Error:', err);
-                alert('PDF 생성 중 오류가 발생했습니다.');
-            } finally {
-                element.style.height = originalStyle;
+                alert('PDF 생성 오류');
             }
         });
     }
 
     if (clearSavedBtn) {
         clearSavedBtn.addEventListener('click', () => {
-            if (confirm('담은 모든 문제를 삭제하시겠습니까?')) {
+            if (confirm('모두 삭제하시겠습니까?')) {
                 savedQuestions = [];
                 updateSavedListUI();
             }
         });
     }
 
-    // Export to JSON
     if (exportJsonBtn) {
         exportJsonBtn.addEventListener('click', () => {
-            if (!lastGeneratedData) return;
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(lastGeneratedData, null, 2));
-            const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", "generated_questions.json");
-            document.body.appendChild(downloadAnchorNode);
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
+            const dl = document.createElement('a');
+            dl.setAttribute("href", dataStr);
+            dl.setAttribute("download", "questions.json");
+            dl.click();
         });
     }
 });
