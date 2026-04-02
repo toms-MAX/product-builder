@@ -52,8 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         temperature: 0.7,
                         topK: 40,
                         topP: 0.95,
-                        maxOutputTokens: 2048,
-                        responseMimeType: "application/json",
+                        maxOutputTokens: 2048
                     }
                 })
             });
@@ -61,7 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             if (data.error) throw new Error(data.error.message);
             
-            const resultText = data.candidates[0].content.parts[0].text;
+            let resultText = data.candidates[0].content.parts[0].text;
+            // Handle cases where AI wraps JSON in code blocks
+            resultText = resultText.replace(/```json/g, '').replace(/```/g, '').trim();
             return JSON.parse(resultText);
         } catch (err) {
             console.error('Gemini API Error:', err);
