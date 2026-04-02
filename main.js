@@ -1,8 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.2.0 initialized');
+    console.log('English Exam Assistant v2.2.1 initialized');
     
     // 기본 키 (사용자 제공)
-    const DEFAULT_KEY = 'AIzaSyCCdebA15oPSS5zKy49PSybrCvVSfmdZ24';
+    const DEFAULT_KEY = 'AIzaSyBTGGx3JaeGbgVMiOhb3PpjXXXTZMiulTQ';
     const MODEL_NAME = 'gemini-1.5-flash';
 
     // Elements
