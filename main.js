@@ -1,9 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.8.2 initialized (Logic & UI Stability)');
+    console.log('English Exam Assistant v2.8.3 initialized (Difficulty-based Options)');
     
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
-    // API에서 확인된 최신 및 가용 모델 위주로 구성
     const VISION_MODELS = [
         'meta-llama/llama-4-scout-17b-16e-instruct',
         'llama-3.2-90b-vision-preview',
@@ -133,7 +132,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             for (const modelId of VISION_MODELS) {
                 try {
-                    console.log(`Trying Vision Model: ${modelId}`);
                     const response = await fetch(API_URL, {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
@@ -158,11 +156,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         break;
                     } else {
                         lastError = responseData.error?.message || '알 수 없는 오류';
-                        console.warn(`Model ${modelId} failed: ${lastError}`);
                     }
                 } catch (err) {
                     lastError = err.message;
-                    console.error(`Error with model ${modelId}:`, err);
                 }
             }
             if (!success) alert('이미지 분석 실패: ' + lastError);
@@ -171,21 +167,36 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    async function generateWithAI(passage) {
+    async function generateWithAI(passage, level) {
         if (!currentApiKey) throw new Error('API 키 설정 필요');
         
+        // 난이도별 보기 언어 전략 설정
+        let optionGuideline = "";
+        if (level === 'easy') {
+            optionGuideline = "보기를 주로 '한글'로 작성하여 중1 수준의 기초적인 이해도를 측정하십시오.";
+        } else if (level === 'medium') {
+            optionGuideline = "보기에 '한글'과 '영어'를 적절히 혼용하여 중2~3 수준의 변별력을 확보하십시오.";
+        } else {
+            optionGuideline = "보기를 주로 '영어'로 작성하여 고등 기초 수준의 높은 사고력을 요구하십시오.";
+        }
+
         const systemMessage = `당신은 대한민국 최고의 영어 교육 전문가이자 내신 출제 위원입니다.
         반드시 JSON 형식으로만 응답하십시오. 응답은 반드시 유효한 JSON 객체여야 하며, 다른 설명 텍스트는 포함하지 마십시오.
+        
+        ### 출제 규칙
+        1. **5지선다 필수**: 모든 문제는 반드시 ①, ②, ③, ④, ⑤의 5개 보기를 가져야 합니다.
+        2. **난이도 반영**: ${optionGuideline}
+        3. **구조**:
         {
           "passage_header": "다음 글을 읽고 물음에 답하시오.",
-          "passage_body": "...",
+          "passage_body": "지문 내용 (기호 포함 가능)",
           "questions": [
             {
-              "type": "...",
-              "question": "...",
+              "type": "유형",
+              "question": "한글 질문",
               "options": ["①...", "②...", "③...", "④...", "⑤..."],
               "answer": "①",
-              "explanation": "..."
+              "explanation": "출제 근거 및 해설"
             }
           ]
         }
@@ -198,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 model: MODEL_NAME,
                 messages: [
                     { role: "system", content: systemMessage },
-                    { role: "user", content: `지문:\n${passage}\n\n위 지문을 바탕으로 고퀄리티 문제 세트를 만드십시오.` }
+                    { role: "user", content: `지문:\n${passage}\n\n난이도: ${level}\n위 지문을 바탕으로 5지선다형 고퀄리티 문제 세트를 만드십시오.` }
                 ],
                 temperature: 0.4,
                 response_format: { type: "json_object" }
@@ -209,17 +220,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!response.ok) throw new Error(data.error?.message || '생성 실패');
         
         let content = data.choices[0].message.content;
-        console.log("Raw AI Content:", content);
-
-        try {
-            // Robust JSON Parsing: 텍스트가 섞여 들어올 경우 대비
-            const jsonMatch = content.match(/\{[\s\S]*\}/);
-            if (jsonMatch) content = jsonMatch[0];
-            return JSON.parse(content);
-        } catch (err) {
-            console.error("AI JSON Parsing Error:", err);
-            throw new Error("AI 응답을 해석할 수 없습니다. 형식이 올바르지 않습니다.");
-        }
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) content = jsonMatch[0];
+        
+        return JSON.parse(content);
     }
 
     function renderExamSet(set) {
@@ -296,14 +300,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (generatePredBtn) {
         generatePredBtn.addEventListener('click', async (e) => {
             const text = document.getElementById('reading-material').value;
+            const level = document.getElementById('predict-level').value;
             if (!text.trim()) return alert('지문을 입력하세요.');
             
             const oldText = e.target.textContent;
             e.target.disabled = true;
-            e.target.textContent = '문제 세트 구성 중...';
+            e.target.textContent = '고난도 세트 구성 중...';
             
             try {
-                const examSet = await generateWithAI(text);
+                const examSet = await generateWithAI(text, level);
                 renderExamSet(examSet);
             } catch (err) {
                 alert('출제 실패: ' + err.message);
