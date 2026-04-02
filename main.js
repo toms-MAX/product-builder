@@ -4,10 +4,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.3-70b-versatile';
     const VISION_MODELS = [
-        'llama-3.2-90b-vision-preview',
-        'llama-3.2-11b-vision-preview'
+        'llama-3.2-90b-vision-preview'
     ];
     const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+
+    async function fetchWithRetry(url, options, maxRetries = 2) {
+        for (let i = 0; i <= maxRetries; i++) {
+            try {
+                const response = await fetch(url, options);
+                if (response.status === 429) {
+                    const wait = Math.pow(2, i) * 3000;
+                    console.log(`Rate limit hit, waiting ${wait}ms...`);
+                    await new Promise(r => setTimeout(r, wait));
+                    continue;
+                }
+                return response;
+            } catch (err) {
+                if (i === maxRetries) throw err;
+                await new Promise(r => setTimeout(r, 1000));
+            }
+        }
+    }
 
     const apiKeyInput = document.getElementById('api-key-input');
     const saveKeyBtn = document.getElementById('save-key-btn');
@@ -114,15 +131,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!currentApiKey) return alert('API 키를 먼저 설정해주세요.');
 
             analyzeStyleBtn.disabled = true;
-            analyzeStyleBtn.textContent = '구조 분석 중...';
+            analyzeStyleBtn.textContent = '깊은 패턴 학습 중...';
 
             const imageContents = droppedFiles.map(dataUrl => ({ type: "image_url", image_url: { url: dataUrl } }));
             let success = false;
             let lastError = '';
 
+            const deepAnalysisPrompt = `당신은 영어 문제 구조를 분석하는 전문가입니다. 
+            이미지를 보고 다음 단계에 따라 분석을 수행하세요:
+            
+            1. OCR 분석: 지문과 문제에 사용된 주요 텍스트와 기호를 모두 파악하세요.
+            2. 유형 분석: 이 문제가 어떤 유형(예: 문장 삽입, 글의 순서, 어법 오류 등)인지 정의하세요.
+            3. 구조 분석: 기호(예: [A], (a), ❶)가 지문의 어느 위치에 어떤 형식으로 쓰였는지 파악하세요.
+            4. 스타일 합성: 위 분석을 바탕으로, 앞으로 AI가 이와 100% 동일한 유형의 문제를 생성할 수 있도록 아주 상세한 '출제 알고리즘 가이드라인'을 작성하세요.
+            
+            이 가이드라인은 생성 AI가 읽고 그대로 따라할 수 있어야 합니다.`;
+
             for (const modelId of VISION_MODELS) {
                 try {
-                    const response = await fetch(API_URL, {
+                    const response = await fetchWithRetry(API_URL, {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -130,10 +157,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             messages: [{
                                 role: "user",
                                 content: [
-                                    { type: "text", text: "이 이미지에 나타난 영어 문제의 '핵심 유형'(예: 주제 찾기, 빈칸 추론, 어법 오류, 문장 삽입, 글의 순서 등)과 '구성 방식'(기호 사용, 지시문 언어, 보기 구성)을 상세히 분석해줘. 특히 앞으로 이와 '동일한 유형'의 문제를 만들기 위한 구체적인 출제 가이드를 작성해줘." },
+                                    { type: "text", text: deepAnalysisPrompt },
                                     ...imageContents
                                 ]
-                            }]
+                            }],
+                            temperature: 0.1
                         })
                     });
                     const responseData = await response.json();
@@ -141,14 +169,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         examStyleProfile = responseData.choices[0].message.content;
                         localStorage.setItem('exam_style_profile', examStyleProfile);
                         styleProfileDisplay.style.display = 'block';
-                        styleProfileDisplay.innerHTML = `✨ <strong>[학습 완료] 분석된 유형: ${examStyleProfile.substring(0, 30)}...</strong>`;
-                        alert('문제 유형 및 스타일 학습 완료!');
+                        styleProfileDisplay.innerHTML = `✨ <strong>[심층 학습 완료] 분석 유형: ${examStyleProfile.substring(0, 30)}...</strong>`;
+                        alert('이미지 패턴 심층 학습 완료!');
                         success = true;
                         break;
                     } else { lastError = responseData.error?.message || 'Error'; }
                 } catch (err) { lastError = err.message; }
             }
-            if (!success) alert('이미지 분석 실패: ' + lastError);
+            if (!success) alert('이미지 분석 실패: ' + lastError + '\n(Rate Limit일 수 있으니 잠시 후 다시 시도해주세요)');
             analyzeStyleBtn.disabled = false;
             analyzeStyleBtn.textContent = '추가된 모든 패턴 학습하기';
         });
