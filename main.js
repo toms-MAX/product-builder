@@ -1,11 +1,11 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.7.3 initialized (Official Model Fix)');
-    
+    console.log('English Exam Assistant v2.7.4 initialized (API-Validated Model Fix)');
+
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
-    const VISION_MODEL = 'llama-3.2-11b-vision'; // 프리뷰 명칭 제거한 정식 모델명
+    const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'; // API에서 확인된 최신 비전 모델
     const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-
+...
     const apiKeyInput = document.getElementById('api-key-input');
     const saveKeyBtn = document.getElementById('save-key-btn');
     const dropZone = document.getElementById('drop-zone');
