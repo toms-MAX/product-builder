@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.3.1 initialized (Groq API)');
+    console.log('English Exam Assistant v2.3.2 initialized (Groq API)');
     
     // 기본 설정 (Groq API)
     const DEFAULT_KEY = ''; 
@@ -55,14 +55,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     messages: [
                         {
                             role: "system",
-                            content: "You are a helpful English teacher. You MUST respond with a valid JSON array of objects. Each object must have 'question' (string), 'options' (array of 5 strings starting with ①, ②, ③, ④, ⑤), and 'answer' (string, e.g., '①')."
+                            content: `당신은 한국 중학교와 고등학교의 영어 내신 시험 출제 위원입니다. 
+                            사용자가 제공한 지문을 바탕으로 다음의 규칙에 따라 엄격하게 문제를 생성하십시오:
+                            
+                            1. **형식**: 반드시 JSON 배열 형식으로만 응답하십시오.
+                            2. **구조**: 각 객체는 'type', 'question', 'options', 'answer', 'level' 키를 가져야 합니다.
+                            3. **유형**: 주제 찾기, 빈칸 추론, 어법 판단, 어휘 쓰임, 내용 일치, 문장 삽입, 글의 순서 등 내신 빈출 유형을 고르게 섞으십시오.
+                            4. **언어**: 질문(question)은 한글로 작성하십시오. 보기(options)는 유형에 따라 영어 또는 한글로 작성하되, 번호는 ①, ②, ③, ④, ⑤ 기호를 사용하십시오.
+                            5. **퀄리티**: 단순 사실 확인이 아니라, 지문의 문법적 특징이나 단어의 문맥상 의미를 묻는 고난도 문제를 포함하십시오.`
                         },
                         {
                             role: "user",
                             content: prompt
                         }
                     ],
-                    temperature: 0.7,
+                    temperature: 0.6,
                     response_format: { type: "json_object" }
                 })
             });
@@ -74,10 +81,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const data = await response.json();
             const content = data.choices[0].message.content;
-            
-            // Groq may return the array wrapped in an object if response_format is json_object
             const parsed = JSON.parse(content);
-            return Array.isArray(parsed) ? parsed : (parsed.questions || Object.values(parsed)[0]);
+            
+            let questions = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.data || Object.values(parsed)[0]);
+            if (!Array.isArray(questions)) throw new Error("유효한 문제 배열을 찾을 수 없습니다.");
+            return questions;
         } catch (err) {
             console.error('API Error:', err);
             throw err;
@@ -104,18 +112,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderQuestions(questions) {
         generatedQuestionsContainer.innerHTML = '';
-        if (!Array.isArray(questions)) {
-            throw new Error("AI가 유효한 문제 형식을 생성하지 못했습니다.");
-        }
         questions.forEach((q, index) => {
             const qDiv = document.createElement('div');
             qDiv.className = 'question-item';
             qDiv.innerHTML = `
+                <div style="margin-bottom: 10px;">
+                    <span class="badge" style="background: #3498db; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 5px;">${q.type || '일반'}</span>
+                    <span class="badge" style="background: #95a5a6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em;">난이도: ${q.level || 'medium'}</span>
+                </div>
                 <button class="add-save-btn">담기</button>
                 <span class="question-text">${index + 1}. ${q.question}</span>
                 <ul class="options-list">
                     ${q.options.map(opt => `<li>${opt}</li>`).join('')}
                 </ul>
+                <details style="margin-top: 10px; font-size: 0.85em; color: #27ae60;">
+                    <summary style="cursor: pointer;">정답 확인</summary>
+                    <p style="margin-top: 5px; font-weight: bold;">정답: ${q.answer}</p>
+                </details>
             `;
             qDiv.querySelector('button').onclick = () => {
                 if (savedQuestions.some(sq => sq.question === q.question)) return alert('이미 담은 문제입니다.');
@@ -152,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isLoading) {
             btn.disabled = true;
             btn.dataset.oldText = btn.textContent;
-            btn.textContent = 'AI 생성 중...';
+            btn.textContent = 'AI 분석 및 출제 중...';
         } else {
             btn.disabled = false;
             btn.textContent = btn.dataset.oldText;
@@ -161,10 +174,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('generate-prediction').addEventListener('click', async (e) => {
         const text = document.getElementById('reading-material').value;
+        const level = document.getElementById('predict-level').value;
+        const count = document.getElementById('predict-count').value;
+        
         if (!text.trim()) return alert('지문을 입력하세요.');
+        
         showLoading(e.target, true);
         try {
-            const prompt = `영어 시험 출제 위원으로서 다음 지문을 바탕으로 중학교 수준 예상 문제 5개를 만드세요. 반드시 JSON 배열 형식으로만 응답하세요. \n\n지문:\n${text}`;
+            const prompt = `다음 영어 지문을 바탕으로 ${level} 난이도의 중/고등학교 내신 시험 문제 ${count}개를 출제하십시오. 
+            단순 내용 확인보다는 어법, 어휘, 빈칸, 논리적 흐름(순서/삽입) 위주로 다양하게 구성하십시오. 
+            반드시 JSON 배열 형식으로 출력하십시오.
+            
+            지문:
+            ${text}`;
+            
             const questions = await generateWithAI(prompt);
             renderQuestions(questions);
         } catch (err) {
@@ -180,7 +203,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const topic = document.getElementById('topic-select').value;
             const level = document.getElementById('level-select').value;
             const count = document.getElementById('question-count').value;
-            const prompt = `Generate ${count} English exam questions about ${topic} for ${level} level in JSON array format. Questions in Korean, options in English.`;
+            const prompt = `Generate ${count} typical school exam questions about ${topic} for ${level} level. 
+            Include grammar, vocabulary, and logic patterns common in Korean English tests.
+            Return as a JSON array.`;
+            
             const questions = await generateWithAI(prompt);
             renderQuestions(questions);
         } catch (err) {
