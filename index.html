@@ -11,6 +11,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
+    <!-- 버전 정보 표시 -->
+    <div id="version-info" style="position: fixed; top: 10px; left: 10px; background: rgba(0,0,0,0.6); color: white; padding: 3px 8px; border-radius: 4px; font-size: 11px; z-index: 9999; pointer-events: none;">
+        Version 2.1.0
+    </div>
+
     <div class="container main-container">
         <button id="theme-toggle">다크 모드</button>
         <h1>영어 시험 도우미</h1>
@@ -47,7 +52,6 @@
 
         <!-- 문제은행 탭 -->
         <div id="question-bank" class="tab-content">
-            <!-- 기존 내용 유지 -->
             <p>PDF 또는 JSON 템플릿의 틀을 유지하며 내용을 변경하여 새로운 문제를 생성합니다.</p>
             <div class="form-group">
                 <label for="level-select">난이도</label>
@@ -69,15 +73,7 @@
                 <label for="question-count">문제 개수</label>
                 <input type="number" id="question-count" min="1" max="20" value="5">
             </div>
-            <div class="form-group">
-                <label for="template-pdf">문제 템플릿 (PDF 파일)</label>
-                <input type="file" id="template-pdf" accept=".pdf">
-            </div>
-            <div class="form-group">
-                <label for="template-json">문제 템플릿 (JSON 파일)</label>
-                <input type="file" id="template-json" accept=".json">
-            </div>
-            <button id="generate-bank" class="action-btn">문제 생성</button>
+            <button id="generate-bank" class="action-btn">기본 문제 생성</button>
         </div>
 
         <!-- 문제 장바구니 탭 -->
@@ -85,7 +81,6 @@
             <p>선별된 문제들을 확인하고 PDF로 내려받으세요.</p>
             <div id="pdf-export-area" class="saved-questions-area">
                 <div id="saved-questions-list">
-                    <!-- 선택된 문제들이 여기에 표시됨 -->
                     <p class="empty-msg">아직 담은 문제가 없습니다.</p>
                 </div>
             </div>
@@ -98,9 +93,7 @@
         <div id="result-container" class="result-area">
             <h3>생성 결과</h3>
             <p style="font-size: 0.9em; color: var(--paragraph-color);">* 마음에 드는 문제 옆의 '담기' 버튼을 눌러보세요.</p>
-            <div id="generated-questions">
-                <!-- 결과가 여기에 표시됩니다. -->
-            </div>
+            <div id="generated-questions"></div>
             <button id="export-json" class="secondary-btn" style="display:none;">전체 JSON 내보내기</button>
         </div>
 
@@ -108,6 +101,6 @@
             <a href="contact.html" class="nav-link">제휴 문의하기</a>
         </div>
     </div>
-    <script src="main.js?v=1.0.2"></script>
+    <script src="main.js?v=2.1.0"></script>
 </body>
 </html>
