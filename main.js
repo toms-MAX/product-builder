@@ -2,9 +2,8 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('English Exam Assistant v2.8.6 initialized (Precise Language Control)');
     
     const DEFAULT_KEY = ''; 
-    const MODEL_NAME = 'llama-3.1-8b-instant';
+    const MODEL_NAME = 'llama-3.3-70b-versatile';
     const VISION_MODELS = [
-        'meta-llama/llama-4-scout-17b-16e-instruct',
         'llama-3.2-90b-vision-preview',
         'llama-3.2-11b-vision-preview'
     ];
@@ -131,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             messages: [{
                                 role: "user",
                                 content: [
-                                    { type: "text", text: "이 이미지의 영어 문제 형태와 구조(기호, 질문 방식, 보기 구성)를 분석해서 가이드를 작성해줘." },
+                                    { type: "text", text: "이 이미지에 나타난 영어 문제의 '핵심 유형'(예: 주제 찾기, 빈칸 추론, 어법 오류, 문장 삽입, 글의 순서 등)과 '구성 방식'(기호 사용, 지시문 언어, 보기 구성)을 상세히 분석해줘. 특히 앞으로 이와 '동일한 유형'의 문제를 만들기 위한 구체적인 출제 가이드를 작성해줘." },
                                     ...imageContents
                                 ]
                             }]
@@ -142,8 +141,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         examStyleProfile = responseData.choices[0].message.content;
                         localStorage.setItem('exam_style_profile', examStyleProfile);
                         styleProfileDisplay.style.display = 'block';
-                        styleProfileDisplay.innerHTML = `✨ <strong>템플릿 분석 완료 (적용 중)</strong>`;
-                        alert('문제 구조 학습 완료!');
+                        styleProfileDisplay.innerHTML = `✨ <strong>[학습 완료] 분석된 유형: ${examStyleProfile.substring(0, 30)}...</strong>`;
+                        alert('문제 유형 및 스타일 학습 완료!');
                         success = true;
                         break;
                     } else { lastError = responseData.error?.message || 'Error'; }
@@ -177,20 +176,20 @@ document.addEventListener('DOMContentLoaded', () => {
         ### 절대 원칙 (MANDATES)
         1. **문항 개수**: 반드시 정확히 ${count}개의 문제를 생성하십시오.
         2. **5지선다**: 모든 문제는 반드시 ①, ②, ③, ④, ⑤의 5개 보기를 가져야 합니다.
-        3. **구조적 복제**: ${examStyleProfile ? `학습된 템플릿 구조를 동일하게 복제하십시오: \n${examStyleProfile}` : '변별력 있는 문항을 설계하십시오.'}
-        4. **Passage**: 지문은 항상 영어로 유지하되, 문제 유형에 맞는 기호를 삽입하십시오.
+        3. **유형 및 스타일 복제 (CRITICAL)**: ${examStyleProfile ? `다음 학습된 [출제 가이드]에 명시된 문제 '유형'과 '스타일'을 그대로 복제하십시오. 가이드에서 특정 유형(예: 순서 배열)이 언급되었다면 반드시 그 유형으로 출제해야 합니다: \n${examStyleProfile}` : '변별력 있는 문항을 설계하십시오.'}
+        4. **Passage**: 지문은 항상 영어로 유지하되, 학습된 스타일에서 요구하는 기호(예: [A], (a), ❶ 등)를 지문에 삽입하십시오.
 
         ### 출력 형식 (JSON ONLY)
         {
-          "passage_header": "지시문 (한글/영어 혼용 가능)",
-          "passage_body": "변형된 영어 지문",
+          "passage_header": "지시문 (학습된 스타일에 맞게 작성)",
+          "passage_body": "변형된 영어 지문 (필요시 기호 포함)",
           "questions": [
             {
-              "type": "유형",
-              "question": "질문",
+              "type": "분석된 문제 유형",
+              "question": "질문 내용",
               "options": ["①...", "②...", "③...", "④...", "⑤..."],
               "answer": "①",
-              "explanation": "해설"
+              "explanation": "상세한 해설"
             }
           ]
         }`;
@@ -202,9 +201,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 model: MODEL_NAME,
                 messages: [
                     { role: "system", content: systemMessage },
-                    { role: "user", content: `CONTEXT: ${passage}\n\nLEVEL: ${level}\n\nTASK: Generate exactly ${count} exam questions following the LANGUAGE RULES for ${level} level.` }
+                    { role: "user", content: `CONTEXT: ${passage}\n\nTASK: 위 지문을 바탕으로 학습된 스타일 가이드를 엄격히 적용하여 ${count}문제를 생성하세요. 가이드에 정의된 문제 유형을 반드시 따르십시오.` }
                 ],
-                temperature: 0.3,
+                temperature: 0.4,
                 response_format: { type: "json_object" }
             })
         });
@@ -302,6 +301,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 const examSet = await generateWithAI(text, level, count);
                 renderExamSet(examSet);
             } catch (err) { alert('출제 실패: ' + err.message); } finally { e.target.disabled = false; e.target.textContent = oldText; }
+        });
+    }
+
+    const generateBankBtn = document.getElementById('generate-bank');
+    if (generateBankBtn) {
+        generateBankBtn.addEventListener('click', async (e) => {
+            const level = document.getElementById('level-select').value;
+            const topic = document.getElementById('topic-select').value;
+            const count = document.getElementById('question-count').value;
+            const oldText = e.target.textContent;
+            e.target.disabled = true;
+            e.target.textContent = '문제 생성 중...';
+            try {
+                const prompt = `${topic} 주제의 ${level} 난이도 영어 문제를 ${count}개 생성해줘.`;
+                const examSet = await generateWithAI(prompt, level, count);
+                renderExamSet(examSet);
+            } catch (err) { alert('생성 실패: ' + err.message); } finally { e.target.disabled = false; e.target.textContent = oldText; }
         });
     }
 
