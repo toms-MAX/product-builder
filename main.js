@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.7.6 initialized (Robust Data Parsing)');
+    console.log('English Exam Assistant v2.8.0 initialized (Professional Architect)');
     
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (examStyleProfile) {
         styleProfileDisplay.style.display = 'block';
-        styleProfileDisplay.innerHTML = `✨ <strong>학습된 멀티 패턴 가이드:</strong><br>${examStyleProfile.substring(0, 150)}...`;
+        styleProfileDisplay.innerHTML = `✨ <strong>학습된 출제 가이드 적용 중</strong>`;
     }
     apiKeyInput.value = currentApiKey === DEFAULT_KEY ? '' : currentApiKey;
 
@@ -112,148 +112,139 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     analyzeStyleBtn.addEventListener('click', async () => {
-        if (droppedFiles.length === 0) return alert('참고할 이미지를 추가해주세요.');
-        if (!currentApiKey) return alert('API 키를 설정해주세요.');
-
+        if (droppedFiles.length === 0) return alert('이미지를 추가해주세요.');
         analyzeStyleBtn.disabled = true;
-        analyzeStyleBtn.textContent = '패턴 분석 중...';
+        analyzeStyleBtn.textContent = '패턴 학습 중...';
 
-        const imageContents = droppedFiles.map(dataUrl => ({
-            type: "image_url",
-            image_url: { url: dataUrl }
-        }));
-
+        const imageContents = droppedFiles.map(dataUrl => ({ type: "image_url", image_url: { url: dataUrl } }));
         let success = false;
         for (const modelId of VISION_MODELS) {
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${currentApiKey}`,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         model: modelId,
                         messages: [{
                             role: "user",
                             content: [
-                                { type: "text", text: "이 이미지의 영어 문제 형태와 출제 기법을 분석해서 종합 가이드를 작성해줘." },
+                                { type: "text", text: "이 이미지의 영어 문제 형태를 분석해줘. 질문의 의도, 보기를 구성하는 방식(매력적인 오답 설계법), 지문 내의 기호 활용법 등을 파악해서 나중에 똑같이 낼 수 있게 가이드를 작성해줘." },
                                 ...imageContents
                             ]
                         }]
                     })
                 });
-
                 const responseData = await response.json();
                 if (response.ok) {
-                    const analysis = responseData.choices[0].message.content;
-                    localStorage.setItem('exam_style_profile', analysis);
-                    examStyleProfile = analysis;
+                    examStyleProfile = responseData.choices[0].message.content;
+                    localStorage.setItem('exam_style_profile', examStyleProfile);
                     styleProfileDisplay.style.display = 'block';
-                    styleProfileDisplay.innerHTML = `✨ <strong>학습 완료:</strong><br>${analysis.substring(0, 300)}...`;
-                    alert('패턴 학습이 완료되었습니다!');
+                    alert('문제 형태 학습 완료!');
                     success = true;
-                    break; 
+                    break;
                 }
-            } catch (err) { console.error(err); }
+            } catch (err) {}
         }
-
-        if (!success) alert('이미지 분석에 실패했습니다. 모델 가용성이나 API 키를 확인해주세요.');
+        if (!success) alert('분석 실패');
         analyzeStyleBtn.disabled = false;
         analyzeStyleBtn.textContent = '추가된 모든 패턴 학습하기';
     });
 
-    async function generateWithAI(prompt) {
-        if (!currentApiKey) throw new Error('API 키를 먼저 설정해주세요!');
-        const systemMessage = `당신은 영어 내신 시험 출제 전문가입니다.
-        ${examStyleProfile ? `\n[학습된 가이드]:\n${examStyleProfile}` : ''}
-        ### 원칙: 
-        1. 반드시 JSON 배열 형식을 출력하십시오. 예: [{"type": "...", "question": "...", "options": ["①...", "②...", "③...", "④...", "⑤..."], "answer": "①", "passage_context": "..."}]
-        2. 다른 텍스트 설명 없이 순수 JSON 배열만 응답하십시오.`;
+    async function generateWithAI(passage) {
+        if (!currentApiKey) throw new Error('API 키 설정 필요');
+        
+        const systemMessage = `당신은 대한민국 최고의 영어 교육 전문가이자 내신 출제 위원입니다.
+        사용자가 제공하는 지문을 바탕으로 다음 원칙에 따라 "전문적인 시험지 세트"를 만드십시오.
+
+        ### 출제 가이드라인
+        1. **구조**: 하나의 지문에 대해 1~3개의 연관 문제를 묶어서 생성하십시오.
+        2. **지문 조작**: 문제 유형에 따라 지문에 [A], (a), ⓐ~ⓔ, [1]~[5] 등의 기호를 적절히 삽입하십시오.
+        3. **문항 퀄리티**:
+           - **내용 일치/불일치**: 단순 언급 여부가 아니라, 본문의 내용을 한글이나 영어로 교묘하게 재진술(Paraphrase)하여 사고력을 요구하십시오.
+           - **빈칸 추론**: 글의 핵심 주제나 핵심 연결어를 논리적 근거가 명확한 곳에 뚫으십시오.
+           - **어법/어휘**: 문맥상 쓰임이 틀린 것을 고르거나, 어법상 어색한 것을 고르는 내신 단골 유형을 포함하십시오.
+        4. **오답 설계**: 보기는 반드시 5개여야 하며, 정답과 혼동될 만한 매력적인 오답을 포함하십시오.
+        5. **형식**: 반드시 아래 JSON 구조로만 출력하십시오.
+        {
+          "passage_header": "다음 글을 읽고 물음에 답하시오.",
+          "passage_body": "기호가 포함된 지문 내용",
+          "questions": [
+            {
+              "type": "유형(예: 어법 판단)",
+              "question": "질문 내용",
+              "options": ["①...", "②...", "③...", "④...", "⑤..."],
+              "answer": "①",
+              "explanation": "이 문제가 측정하고자 하는 개념과 정답인 이유"
+            }
+          ]
+        }
+        
+        ${examStyleProfile ? `\n[참고할 이미지 패턴]:\n${examStyleProfile}` : ''}`;
 
         const response = await fetch(API_URL, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${currentApiKey}`,
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model: MODEL_NAME,
                 messages: [
                     { role: "system", content: systemMessage },
-                    { role: "user", content: prompt }
+                    { role: "user", content: `지문:\n${passage}\n\n위 지문을 바탕으로 고퀄리티 문제 세트를 만드십시오.` }
                 ],
-                temperature: 0.3,
+                temperature: 0.4,
                 response_format: { type: "json_object" }
             })
         });
 
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error?.message || '생성 실패');
-        
-        let content = data.choices[0].message.content;
-        console.log("Raw AI Content:", content);
-
-        try {
-            const parsed = JSON.parse(content);
-            // 배열 추출 로직 강화
-            let questions = [];
-            if (Array.isArray(parsed)) {
-                questions = parsed;
-            } else if (parsed.questions && Array.isArray(parsed.questions)) {
-                questions = parsed.questions;
-            } else if (parsed.data && Array.isArray(parsed.data)) {
-                questions = parsed.data;
-            } else {
-                // 객체 내부의 첫 번째 배열을 찾음
-                const firstArray = Object.values(parsed).find(val => Array.isArray(val));
-                if (firstArray) questions = firstArray;
-            }
-
-            if (questions.length === 0) throw new Error("문제 배열을 찾을 수 없습니다.");
-            return questions;
-        } catch (e) {
-            console.error("Parsing Error:", e);
-            throw new Error("AI 응답 형식이 올바르지 않습니다. 다시 시도해주세요.");
-        }
+        if (!response.ok) throw new Error(data.error?.message || '실패');
+        return JSON.parse(data.choices[0].message.content);
     }
 
-    function renderQuestions(questions) {
+    function renderExamSet(set) {
         generatedQuestionsContainer.innerHTML = '';
         
-        if (!Array.isArray(questions)) {
-            console.error("Expected array but got:", questions);
-            generatedQuestionsContainer.innerHTML = '<p style="color:red">데이터 형식 오류: 생성된 결과가 배열이 아닙니다.</p>';
-            return;
-        }
+        const setDiv = document.createElement('div');
+        setDiv.className = 'exam-set-container';
+        setDiv.style.cssText = "background: #fff; padding: 25px; border: 1px solid #ccc; border-radius: 8px; color: #000;";
+        
+        setDiv.innerHTML = `
+            <div class="set-header" style="font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px;">
+                ${set.passage_header || '다음 글을 읽고 물음에 답하시오.'}
+            </div>
+            <div class="set-passage" style="line-height: 1.8; font-size: 1.1em; margin-bottom: 30px; white-space: pre-wrap; padding: 15px; background: #f9f9f9; border-radius: 4px;">${set.passage_body}</div>
+            <div class="set-questions"></div>
+        `;
 
-        questions.forEach((q, index) => {
+        const questionsArea = setDiv.querySelector('.set-questions');
+        set.questions.forEach((q, i) => {
             const qDiv = document.createElement('div');
             qDiv.className = 'question-item';
+            qDiv.style.marginBottom = "30px";
             qDiv.innerHTML = `
-                <div style="margin-bottom: 10px;">
-                    <span class="badge" style="background: #3498db; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 5px;">${q.type || '내신'}</span>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                    <span style="font-weight: bold; font-size: 1.1em;">${i + 1}. ${q.question}</span>
+                    <button class="add-save-btn" style="position: static;">담기</button>
                 </div>
-                <button class="add-save-btn">담기</button>
-                <div class="passage-box" style="background: #fdfefe; padding: 15px; border-radius: 6px; border: 1px dashed #3498db; margin: 10px 0; font-size: 0.95em; line-height: 1.7;">
-                    ${q.passage_context || '지문 없음'}
-                </div>
-                <span class="question-text" style="font-weight: bold; display: block; margin: 15px 0;">${index + 1}. ${q.question}</span>
-                <ul class="options-list" style="list-style: none; padding-left: 0;">
-                    ${(q.options || []).map(opt => `<li style="margin-bottom: 8px; padding: 8px; border: 1px solid #eee; border-radius: 4px;">${opt}</li>`).join('')}
+                <ul class="options-list" style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                    ${q.options.map(opt => `<li style="border: 1px solid #eee; padding: 10px; border-radius: 4px;">${opt}</li>`).join('')}
                 </ul>
-                <details style="margin-top: 20px; font-size: 0.85em; color: #27ae60; background: #f0fff4; padding: 12px; border-radius: 6px;">
-                    <summary style="cursor: pointer; font-weight: bold;">정답 확인</summary>
+                <details style="margin-top: 15px; font-size: 0.9em; color: #27ae60; background: #f0fff4; padding: 10px; border-radius: 4px;">
+                    <summary style="cursor: pointer; font-weight: bold;">정답 및 해설 (클릭)</summary>
                     <p style="margin-top: 10px;"><strong>정답: ${q.answer}</strong></p>
+                    <p style="color: #555;">${q.explanation}</p>
                 </details>
             `;
-            qDiv.querySelector('button').onclick = () => {
-                if (savedQuestions.some(sq => sq.question === q.question)) return alert('이미 담은 문제입니다.');
-                savedQuestions.push(q);
+            
+            qDiv.querySelector('.add-save-btn').onclick = () => {
+                const saveItem = { ...q, passage_context: set.passage_body };
+                savedQuestions.push(saveItem);
                 updateSavedListUI();
+                alert('장바구니에 담겼습니다.');
             };
-            generatedQuestionsContainer.appendChild(qDiv);
+            questionsArea.appendChild(qDiv);
         });
+
+        generatedQuestionsContainer.appendChild(setDiv);
         resultArea.scrollIntoView({ behavior: 'smooth' });
     }
 
@@ -265,66 +256,51 @@ document.addEventListener('DOMContentLoaded', () => {
             qDiv.className = 'question-item';
             qDiv.innerHTML = `
                 <button class="add-save-btn" style="background:#e74c3c">삭제</button>
-                <span class="question-text">${index + 1}. ${q.question}</span>
+                <div style="font-size: 0.8em; color: #666; max-height: 40px; overflow: hidden;">${q.passage_context?.substring(0, 50)}...</div>
+                <span class="question-text">${q.question}</span>
             `;
-            qDiv.querySelector('button').onclick = () => {
-                savedQuestions.splice(index, 1);
-                updateSavedListUI();
-            };
+            qDiv.querySelector('button').onclick = () => { savedQuestions.splice(index, 1); updateSavedListUI(); };
             savedQuestionsList.appendChild(qDiv);
         });
-    }
-
-    function showLoading(btn, isLoading) {
-        btn.disabled = isLoading;
-        btn.textContent = isLoading ? '처리 중...' : btn.dataset.oldText || btn.textContent;
-        if (isLoading) btn.dataset.oldText = btn.textContent;
     }
 
     document.getElementById('generate-prediction').addEventListener('click', async (e) => {
         const text = document.getElementById('reading-material').value;
         if (!text.trim()) return alert('지문을 입력하세요.');
-        showLoading(e.target, true);
+        
+        const oldText = e.target.textContent;
+        e.target.disabled = true;
+        e.target.textContent = '일타 강사 모드로 출제 중...';
+        
         try {
-            const level = document.getElementById('predict-level').value;
-            const count = document.getElementById('predict-count').value;
-            const questions = await generateWithAI(`다음 지문을 바탕으로 ${level} 난이도 문제 ${count}개를 출제하십시오.\n지문:\n${text}`);
-            renderQuestions(questions);
-        } catch (err) { alert('오류: ' + err.message); } finally { showLoading(e.target, false); }
+            const examSet = await generateWithAI(text);
+            renderExamSet(examSet);
+        } catch (err) {
+            alert('오류: ' + err.message);
+        } finally {
+            e.target.disabled = false;
+            e.target.textContent = oldText;
+        }
     });
 
-    document.getElementById('generate-bank').addEventListener('click', async (e) => {
-        showLoading(e.target, true);
-        try {
-            const topic = document.getElementById('topic-select').value;
-            const level = document.getElementById('level-select').value;
-            const count = document.getElementById('question-count').value;
-            const questions = await generateWithAI(`Generate ${count} English exam questions about ${topic} for ${level} level.`);
-            renderQuestions(questions);
-        } catch (err) { alert('오류: ' + err.message); } finally { showLoading(e.target, false); }
-    });
-
+    // 기본 로직 유지
     document.getElementById('export-pdf').onclick = async () => {
-        if (!savedQuestions.length) return;
         const canvas = await html2canvas(document.getElementById('pdf-export-area'), { scale: 2 });
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF('p', 'mm', 'a4');
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 210, (canvas.height * 210) / canvas.width);
-        pdf.save('english_test.pdf');
+        pdf.save('english_exam.pdf');
     };
-
     document.getElementById('clear-saved').onclick = () => { if (confirm('비울까요?')) { savedQuestions = []; updateSavedListUI(); } };
-
     if (localStorage.getItem('theme') === 'dark') body.classList.add('dark-mode');
     themeToggle.addEventListener('click', () => {
         body.classList.toggle('dark-mode');
         localStorage.setItem('theme', body.classList.contains('dark-mode') ? 'dark' : 'light');
     });
-
-    document.querySelectorAll('.tab-btn').forEach(btn => {
+    tabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            tabBtns.forEach(b => b.classList.remove('active'));
+            tabContents.forEach(c => c.classList.remove('active'));
             btn.classList.add('active');
             document.getElementById(btn.getAttribute('data-tab')).classList.add('active');
         });
