@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.5.0 initialized (Vision & Context)');
+    console.log('English Exam Assistant v2.5.1 initialized (Exact Replication)');
     
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
@@ -25,7 +25,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentApiKey = localStorage.getItem('groq_api_key') || DEFAULT_KEY;
     let examStyleProfile = localStorage.getItem('exam_style_profile') || '';
 
-    if (examStyleProfile) styleProfileDisplay.style.display = 'block';
+    if (examStyleProfile) {
+        styleProfileDisplay.style.display = 'block';
+        styleProfileDisplay.innerHTML = `✨ <strong>학습된 문제 형태:</strong><br>${examStyleProfile.substring(0, 100)}...`;
+    }
     apiKeyInput.value = currentApiKey === DEFAULT_KEY ? '' : currentApiKey;
 
     saveKeyBtn.addEventListener('click', () => {
@@ -37,14 +40,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 1. 이미지 스타일 분석 기능 (Vision)
+    // 1. 이미지 형태 복제 분석 (Vision)
     analyzeStyleBtn.addEventListener('click', async () => {
         const file = examImageInput.files[0];
-        if (!file) return alert('분석할 시험지 이미지를 선택해주세요.');
+        if (!file) return alert('참고할 문제 이미지를 선택해주세요.');
         if (!currentApiKey) return alert('API 키를 먼저 설정해주세요.');
 
         analyzeStyleBtn.disabled = true;
-        analyzeStyleBtn.textContent = '이미지 분석 중...';
+        analyzeStyleBtn.textContent = '문제 형태 분석 중...';
 
         try {
             const base64Image = await toBase64(file);
@@ -60,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         {
                             role: "user",
                             content: [
-                                { type: "text", text: "이 시험지 이미지에서 사용된 문제 유형(어법, 빈칸 등), 보기 형식, 질문의 말투, 난이도 특징을 분석하여 핵심 요약만 한국어로 적어줘. 이 내용은 나중에 비슷한 문제를 출제하는 데 사용될 거야." },
+                                { type: "text", text: "이 이미지에 나온 문제의 '형태'와 '출제 방식'을 정밀 분석해줘. 예를 들어, '지문 속에 ⓐ~ⓔ 기호가 있고 어법상 틀린 것을 모두 고르는 형태'인지, '특정 문장을 [1]~[5] 중 넣는 형태'인지 등을 파악해서, 내가 나중에 다른 지문을 주었을 때 똑같은 '형태'로 문제를 낼 수 있도록 출제 가이드를 작성해줘." },
                                 { type: "image_url", image_url: { url: base64Image } }
                             ]
                         }
@@ -75,12 +78,13 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('exam_style_profile', analysis);
             examStyleProfile = analysis;
             styleProfileDisplay.style.display = 'block';
-            alert('시험지 스타일 학습 완료! 이제 생성되는 문제에 이 스타일이 반영됩니다.');
+            styleProfileDisplay.innerHTML = `✨ <strong>학습된 문제 형태:</strong><br>${analysis}`;
+            alert('문제 형태 학습 완료! 이제 어떤 지문을 넣어도 이 형태대로 출제됩니다.');
         } catch (err) {
             alert('분석 실패: ' + err.message);
         } finally {
             analyzeStyleBtn.disabled = false;
-            analyzeStyleBtn.textContent = '이미지에서 출제 유형 학습하기';
+            analyzeStyleBtn.textContent = '이미지에서 출제 형태 학습하기';
         }
     });
 
@@ -88,13 +92,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!currentApiKey) throw new Error('API 키를 먼저 설정해주세요!');
 
         const systemMessage = `당신은 대한민국 최고의 영어 내신 시험 출제 전문가입니다.
-        ${examStyleProfile ? `\n[학습된 출제 스타일]:\n${examStyleProfile}` : ''}
+        ${examStyleProfile ? `\n### 중요: 다음 [학습된 문제 형태]를 반드시 복제하여 출제하십시오:\n${examStyleProfile}` : ''}
         
         ### 출제 원칙
-        1. **지문 동시 제공 (필수)**: 각 문제마다 해당 문제를 풀기 위해 필요한 지문 영역을 'passage_context' 필드에 반드시 포함하십시오.
-        2. **지문 변형**: 문장 삽입이나 어법 문제는 지문 내에 [1]~[5] 또는 ⓐ~ⓔ 표시를 넣은 변형된 지문을 제공하십시오.
-        3. **5지선다**: 모든 문제는 반드시 ①~⑤ 보기를 가져야 합니다.
-        4. **검토**: 문제에 논리적 오류가 없는지, 정답이 명확한지 자가 검토 후 최종 JSON을 출력하십시오.`;
+        1. **형태 복제**: 사용자가 제공한 이미지 분석 결과가 있다면, 그 문제의 '형태(질문 방식, 보기 구성, 지문 조작)'를 100% 동일하게 유지하며 새로운 지문의 내용만 반영하십시오.
+        2. **지문 동시 제공**: 각 문제마다 풀이에 필요한 변형된 지문(passage_context)을 반드시 포함하십시오.
+        3. **무오류 검증**: 5지선다 여부, 정답의 유일성, 지문 내 기호 표시 누락 등을 최종 검토하십시오.`;
 
         try {
             const response = await fetch(API_URL, {
@@ -109,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         { role: "system", content: systemMessage },
                         { role: "user", content: prompt }
                     ],
-                    temperature: 0.4,
+                    temperature: 0.3, // 일관성을 위해 더 낮춤
                     response_format: { type: "json_object" }
                 })
             });
@@ -132,25 +135,25 @@ document.addEventListener('DOMContentLoaded', () => {
             
             qDiv.innerHTML = `
                 <div style="margin-bottom: 10px;">
-                    <span class="badge" style="background: #3498db; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 5px;">${q.type || '내신'}</span>
-                    <span class="badge" style="background: #2ecc71; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em;">지문 포함</span>
+                    <span class="badge" style="background: #3498db; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 5px;">${q.type || '커스텀 유형'}</span>
+                    <span class="badge" style="background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em;">형태 복제 적용됨</span>
                 </div>
                 <button class="add-save-btn">담기</button>
                 
-                <div class="passage-box" style="background: #f8f9fa; padding: 12px; border-radius: 6px; border-left: 4px solid #3498db; margin: 10px 0; font-size: 0.9em; line-height: 1.6;">
+                <div class="passage-box" style="background: #fdfefe; padding: 15px; border-radius: 6px; border: 1px dashed #3498db; margin: 10px 0; font-size: 0.95em; line-height: 1.7; color: #2c3e50;">
                     ${q.passage_context || '지문 정보가 없습니다.'}
                 </div>
 
-                <span class="question-text" style="font-weight: bold; display: block; margin: 10px 0;">${index + 1}. ${q.question}</span>
+                <span class="question-text" style="font-weight: bold; display: block; margin: 15px 0; font-size: 1.05em; color: #2c3e50;">${index + 1}. ${q.question}</span>
                 
-                <ul class="options-list">
-                    ${q.options.map(opt => `<li>${opt}</li>`).join('')}
+                <ul class="options-list" style="list-style: none; padding-left: 0;">
+                    ${q.options.map(opt => `<li style="margin-bottom: 8px; padding: 8px; background: #fff; border: 1px solid #eee; border-radius: 4px;">${opt}</li>`).join('')}
                 </ul>
                 
-                <details style="margin-top: 15px; font-size: 0.85em; color: #27ae60; background: #f0fff4; padding: 8px; border-radius: 4px;">
-                    <summary style="cursor: pointer; font-weight: bold;">정답 및 해설</summary>
-                    <p style="margin-top: 5px;"><strong>정답: ${q.answer}</strong></p>
-                    <p style="color: #666; font-size: 0.9em;">${q.explanation || '해당 문제는 학습된 스타일을 바탕으로 정밀하게 출제되었습니다.'}</p>
+                <details style="margin-top: 20px; font-size: 0.85em; color: #27ae60; background: #f0fff4; padding: 12px; border-radius: 6px; border: 1px solid #c3e6cb;">
+                    <summary style="cursor: pointer; font-weight: bold;">정답 및 출제 근거 확인</summary>
+                    <p style="margin-top: 10px; font-size: 1.1em;"><strong>정답: ${q.answer}</strong></p>
+                    <p style="color: #666; font-size: 0.9em; line-height: 1.5;">${q.explanation || '이미지의 문제 형태를 바탕으로 지문의 논리 구조를 분석하여 출제되었습니다.'}</p>
                 </details>
             `;
             qDiv.querySelector('button').onclick = () => {
@@ -163,7 +166,6 @@ document.addEventListener('DOMContentLoaded', () => {
         resultArea.scrollIntoView({ behavior: 'smooth' });
     }
 
-    // 유틸리티: 이미지를 Base64로 변환
     function toBase64(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -173,7 +175,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- 기존 UI 로직 유지 ---
     function updateSavedListUI() {
         savedCountBadge.textContent = savedQuestions.length;
         savedQuestionsList.innerHTML = savedQuestions.length ? '' : '<p class="empty-msg">아직 담은 문제가 없습니다.</p>';
@@ -182,7 +183,6 @@ document.addEventListener('DOMContentLoaded', () => {
             qDiv.className = 'question-item';
             qDiv.innerHTML = `
                 <button class="add-save-btn" style="background:#e74c3c">삭제</button>
-                <div class="passage-box" style="font-size: 0.8em; color: #666; max-height: 60px; overflow: hidden; margin-bottom: 5px;">${q.passage_context || ''}</div>
                 <span class="question-text">${index + 1}. ${q.question}</span>
             `;
             qDiv.querySelector('button').onclick = () => {
@@ -195,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showLoading(btn, isLoading) {
         btn.disabled = isLoading;
-        btn.textContent = isLoading ? 'AI 분석 및 출제 중...' : btn.dataset.oldText || btn.textContent;
+        btn.textContent = isLoading ? '형태 복제 중...' : btn.dataset.oldText || btn.textContent;
         if (isLoading) btn.dataset.oldText = btn.textContent;
     }
 
@@ -207,9 +207,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         showLoading(e.target, true);
         try {
-            const prompt = `다음 지문을 분석하여 ${level} 난이도의 내신 문제 ${count}개를 출제하세요. 
-            반드시 각 문제마다 'passage_context' 필드에 해당 문제 풀이에 필요한 지문을 포함하고, 5지선다 형식을 유지하세요.
-            
+            const prompt = `다음 지문을 바탕으로 ${level} 난이도의 문제를 ${count}개 출제하세요. 
+            반드시 학습된 이미지의 문제 형태를 그대로 복제하십시오.
             지문:
             ${text}`;
             const questions = await generateWithAI(prompt);
