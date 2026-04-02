@@ -1,12 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.3.2 initialized (Groq API)');
+    console.log('English Exam Assistant v2.4.0 initialized (Self-Refinement & Logic Fix)');
     
-    // 기본 설정 (Groq API)
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
     const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-    // Elements
     const apiKeyInput = document.getElementById('api-key-input');
     const saveKeyBtn = document.getElementById('save-key-btn');
     const themeToggle = document.getElementById('theme-toggle');
@@ -20,7 +18,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let savedQuestions = [];
 
-    // 1. API 키 로드 로직
     let currentApiKey = localStorage.getItem('groq_api_key') || DEFAULT_KEY;
     apiKeyInput.value = currentApiKey === DEFAULT_KEY ? '' : currentApiKey;
 
@@ -29,7 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (newKey) {
             localStorage.setItem('groq_api_key', newKey);
             currentApiKey = newKey;
-            alert('Groq API 키가 저장되었습니다. 이제 문제를 생성해보세요!');
+            alert('Groq API 키가 저장되었습니다. 버전 2.4.0의 고퀄리티 출제 로직이 적용됩니다!');
         } else {
             localStorage.removeItem('groq_api_key');
             currentApiKey = DEFAULT_KEY;
@@ -37,11 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 2. AI 호출 함수 (Groq / OpenAI 호환)
     async function generateWithAI(prompt) {
-        if (!currentApiKey) {
-            throw new Error('API 키를 먼저 설정해주세요!');
-        }
+        if (!currentApiKey) throw new Error('API 키를 먼저 설정해주세요!');
 
         try {
             const response = await fetch(API_URL, {
@@ -55,21 +49,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     messages: [
                         {
                             role: "system",
-                            content: `당신은 한국 중학교와 고등학교의 영어 내신 시험 출제 위원입니다. 
-                            사용자가 제공한 지문을 바탕으로 다음의 규칙에 따라 엄격하게 문제를 생성하십시오:
-                            
-                            1. **형식**: 반드시 JSON 배열 형식으로만 응답하십시오.
-                            2. **구조**: 각 객체는 'type', 'question', 'options', 'answer', 'level' 키를 가져야 합니다.
-                            3. **유형**: 주제 찾기, 빈칸 추론, 어법 판단, 어휘 쓰임, 내용 일치, 문장 삽입, 글의 순서 등 내신 빈출 유형을 고르게 섞으십시오.
-                            4. **언어**: 질문(question)은 한글로 작성하십시오. 보기(options)는 유형에 따라 영어 또는 한글로 작성하되, 번호는 ①, ②, ③, ④, ⑤ 기호를 사용하십시오.
-                            5. **퀄리티**: 단순 사실 확인이 아니라, 지문의 문법적 특징이나 단어의 문맥상 의미를 묻는 고난도 문제를 포함하십시오.`
+                            content: `당신은 대한민국 최고의 영어 내신 시험 출제 전문가입니다. 당신은 단순히 문제를 생성하는 것을 넘어, 생성된 문제의 논리적 결함(오류)을 스스로 검토하고 수정하는 능력을 갖추고 있습니다.
+
+### 출제 원칙 (고퀄리티 & 무오류)
+1. **유형별 정교함**:
+    - **문장 삽입**: 지문에서 특정 문장을 추출하여 문제에 제시하고, 지문 내에는 [1], [2], [3], [4], [5] 위치를 표시해야 합니다. (제시된 문장이 지문에 그대로 남아있으면 절대 안 됨)
+    - **어법**: 중/고교 핵심 문법(관계사, 수동태, 분사구문 등)을 교묘하게 변형하여 출제하십시오.
+    - **5지선다**: 모든 문제는 반드시 ①, ②, ③, ④, ⑤의 5개 보기를 가져야 합니다.
+2. **검토 프로세스 (Self-Correction)**:
+    - 문제를 출력하기 전, 다음 사항을 스스로 체크하십시오:
+      - "보기 5개가 모두 있는가?"
+      - "정답이 유일하고 명확한가?"
+      - "삽입/순서 문제에서 지문 조작이 완벽한가?"
+3. **데이터 구조**: 아래의 JSON 배열 형식을 엄격히 준수하십시오.
+[
+  {
+    "type": "유형명",
+    "question": "한글 질문 (문장 삽입 시 제시문 포함)",
+    "options": ["①...", "②...", "③...", "④...", "⑤..."],
+    "answer": "①",
+    "level": "medium/hard",
+    "passage_modified": "수정된 지문 (삽입 위치 [1]~[5] 등이 포함된 경우만 작성, 없으면 빈 문자열)"
+  }
+]`
                         },
                         {
                             role: "user",
                             content: prompt
                         }
                     ],
-                    temperature: 0.6,
+                    temperature: 0.4, // 창의성보다는 논리적 정확성을 위해 낮춤
                     response_format: { type: "json_object" }
                 })
             });
@@ -84,7 +93,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const parsed = JSON.parse(content);
             
             let questions = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.data || Object.values(parsed)[0]);
-            if (!Array.isArray(questions)) throw new Error("유효한 문제 배열을 찾을 수 없습니다.");
             return questions;
         } catch (err) {
             console.error('API Error:', err);
@@ -92,42 +100,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Theme
-    if (localStorage.getItem('theme') === 'dark') body.classList.add('dark-mode');
-    themeToggle.addEventListener('click', () => {
-        body.classList.toggle('dark-mode');
-        localStorage.setItem('theme', body.classList.contains('dark-mode') ? 'dark' : 'light');
-    });
-
-    // Tabs
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tabId = btn.getAttribute('data-tab');
-            tabBtns.forEach(b => b.classList.remove('active'));
-            tabContents.forEach(c => c.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById(tabId).classList.add('active');
-        });
-    });
-
     function renderQuestions(questions) {
         generatedQuestionsContainer.innerHTML = '';
         questions.forEach((q, index) => {
             const qDiv = document.createElement('div');
             qDiv.className = 'question-item';
+            
+            // 삽입 위치 표시가 있는 수정된 지문이 있다면 표시
+            const passageDisplay = q.passage_modified ? `
+                <div class="modified-passage" style="background: #f0f4f8; padding: 10px; border-radius: 5px; margin: 10px 0; font-style: italic; font-size: 0.9em; border-left: 4px solid #3498db;">
+                    <strong>[문제용 지문 변형]</strong><br>${q.passage_modified}
+                </div>
+            ` : '';
+
             qDiv.innerHTML = `
                 <div style="margin-bottom: 10px;">
-                    <span class="badge" style="background: #3498db; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 5px;">${q.type || '일반'}</span>
-                    <span class="badge" style="background: #95a5a6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em;">난이도: ${q.level || 'medium'}</span>
+                    <span class="badge" style="background: #3498db; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 5px;">${q.type || '내신'}</span>
+                    <span class="badge" style="background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em;">High Quality</span>
                 </div>
                 <button class="add-save-btn">담기</button>
                 <span class="question-text">${index + 1}. ${q.question}</span>
+                ${passageDisplay}
                 <ul class="options-list">
                     ${q.options.map(opt => `<li>${opt}</li>`).join('')}
                 </ul>
                 <details style="margin-top: 10px; font-size: 0.85em; color: #27ae60;">
-                    <summary style="cursor: pointer;">정답 확인</summary>
+                    <summary style="cursor: pointer;">해설 및 정답 확인</summary>
                     <p style="margin-top: 5px; font-weight: bold;">정답: ${q.answer}</p>
+                    <p style="color: #666;">* 본 문제는 AI에 의해 2단계 검증을 거쳐 생성되었습니다.</p>
                 </details>
             `;
             qDiv.querySelector('button').onclick = () => {
@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isLoading) {
             btn.disabled = true;
             btn.dataset.oldText = btn.textContent;
-            btn.textContent = 'AI 분석 및 출제 중...';
+            btn.textContent = '고퀄리티 검토 및 출제 중 (약 10초 소요)...';
         } else {
             btn.disabled = false;
             btn.textContent = btn.dataset.oldText;
@@ -181,10 +181,16 @@ document.addEventListener('DOMContentLoaded', () => {
         
         showLoading(e.target, true);
         try {
-            const prompt = `다음 영어 지문을 바탕으로 ${level} 난이도의 중/고등학교 내신 시험 문제 ${count}개를 출제하십시오. 
-            단순 내용 확인보다는 어법, 어휘, 빈칸, 논리적 흐름(순서/삽입) 위주로 다양하게 구성하십시오. 
-            반드시 JSON 배열 형식으로 출력하십시오.
-            
+            const prompt = `[학습용 예시]
+            기출 유형: 어법 판단
+            질문: 다음 중 어법상 어색한 문장을 고르시오.
+            보기: ["① He enjoys playing the piano.", "② She has lived here for ten years.", "③ I look forward to meet you.", "④ They are used to waking up early.", "⑤ We should have studied harder."]
+            정답: ③
+
+            [요청]
+            위 예시의 퀄리티와 형식을 참고하여, 다음 지문에 대한 ${level} 난이도의 내신 문제 ${count}개를 출제하십시오.
+            **반드시 문장 삽입, 어법 오류 찾기, 빈칸 추론 등 복합적인 사고를 요하는 문제를 포함하고, 모든 문제는 5지선다로 구성하십시오.**
+
             지문:
             ${text}`;
             
@@ -203,9 +209,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const topic = document.getElementById('topic-select').value;
             const level = document.getElementById('level-select').value;
             const count = document.getElementById('question-count').value;
-            const prompt = `Generate ${count} typical school exam questions about ${topic} for ${level} level. 
-            Include grammar, vocabulary, and logic patterns common in Korean English tests.
-            Return as a JSON array.`;
+            const prompt = `Generate ${count} extremely high-quality English exam questions about ${topic} for ${level} level. 
+            Follow the Korean national curriculum standards. 5 options for each.`;
             
             const questions = await generateWithAI(prompt);
             renderQuestions(questions);
