@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.8.4 initialized (Strict Enforce Mode)');
+    console.log('English Exam Assistant v2.8.5 initialized (Strict Quantity Control)');
     
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
@@ -109,53 +109,60 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 1. 비전 분석 프롬프트 고도화 (구조 추출 중심)
-    analyzeStyleBtn.addEventListener('click', async () => {
-        if (droppedFiles.length === 0) return alert('참고할 이미지를 추가해주세요.');
-        if (!currentApiKey) return alert('API 키를 먼저 설정해주세요.');
+    if (analyzeStyleBtn) {
+        analyzeStyleBtn.addEventListener('click', async () => {
+            if (droppedFiles.length === 0) return alert('참고할 이미지를 추가해주세요.');
+            if (!currentApiKey) return alert('API 키를 먼저 설정해주세요.');
 
-        analyzeStyleBtn.disabled = true;
-        analyzeStyleBtn.textContent = '구조 분석 및 템플릿화 중...';
+            analyzeStyleBtn.disabled = true;
+            analyzeStyleBtn.textContent = '구조 분석 및 템플릿화 중...';
 
-        const imageContents = droppedFiles.map(dataUrl => ({ type: "image_url", image_url: { url: dataUrl } }));
-        let success = false;
-        let lastError = '';
+            const imageContents = droppedFiles.map(dataUrl => ({ type: "image_url", image_url: { url: dataUrl } }));
+            let success = false;
+            let lastError = '';
 
-        for (const modelId of VISION_MODELS) {
-            try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: modelId,
-                        messages: [{
-                            role: "user",
-                            content: [
-                                { type: "text", text: "이 이미지에 있는 문제들의 '구조적 특징'을 기술 명세서처럼 분석해줘. 반드시 다음 항목을 포함해: 1. 지문에 삽입된 특수 기호 종류([1], ⓐ 등), 2. 질문의 전형적인 말투, 3. 보기(Options)의 구성 방식(길이, 개수, 언어 비중). 이 명세서는 나중에 동일한 형태의 문제를 생성하는 템플릿으로 사용될 거야." },
-                                ...imageContents
-                            ]
-                        }]
-                    })
-                });
-                const responseData = await response.json();
-                if (response.ok) {
-                    examStyleProfile = responseData.choices[0].message.content;
-                    localStorage.setItem('exam_style_profile', examStyleProfile);
-                    styleProfileDisplay.style.display = 'block';
-                    styleProfileDisplay.innerHTML = `✨ <strong>템플릿 분석 완료 (적용 중)</strong>`;
-                    alert('문제 구조 학습이 완료되었습니다! 이제 모든 생성은 이 템플릿을 따릅니다.');
-                    success = true;
-                    break;
-                } else { lastError = responseData.error?.message || 'Error'; }
-            } catch (err) { lastError = err.message; }
-        }
-        if (!success) alert('분석 실패: ' + lastError);
-        analyzeStyleBtn.disabled = false;
-        analyzeStyleBtn.textContent = '추가된 모든 패턴 학습하기';
-    });
+            for (const modelId of VISION_MODELS) {
+                try {
+                    console.log(`Trying Vision Model: ${modelId}`);
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: modelId,
+                            messages: [{
+                                role: "user",
+                                content: [
+                                    { type: "text", text: "이 이미지에 있는 문제들의 '구조적 특징'을 기술 명세서처럼 분석해줘. 반드시 다음 항목을 포함해: 1. 지문에 삽입된 특수 기호 종류([1], ⓐ 등), 2. 질문의 전형적인 말투, 3. 보기(Options)의 구성 방식(길이, 개수, 언어 비중). 이 명세서는 나중에 동일한 형태의 문제를 생성하는 템플릿으로 사용될 거야." },
+                                    ...imageContents
+                                ]
+                            }]
+                        })
+                    });
+                    const responseData = await response.json();
+                    if (response.ok) {
+                        examStyleProfile = responseData.choices[0].message.content;
+                        localStorage.setItem('exam_style_profile', examStyleProfile);
+                        styleProfileDisplay.style.display = 'block';
+                        styleProfileDisplay.innerHTML = `✨ <strong>템플릿 분석 완료 (적용 중)</strong>`;
+                        alert('문제 구조 학습이 완료되었습니다! 이제 모든 생성은 이 템플릿을 따릅니다.');
+                        success = true;
+                        break;
+                    } else {
+                        lastError = responseData.error?.message || '알 수 없는 오류';
+                        console.warn(`Model ${modelId} failed: ${lastError}`);
+                    }
+                } catch (err) {
+                    lastError = err.message;
+                    console.error(`Error with model ${modelId}:`, err);
+                }
+            }
+            if (!success) alert('이미지 분석 실패: ' + lastError);
+            analyzeStyleBtn.disabled = false;
+            analyzeStyleBtn.textContent = '추가된 모든 패턴 학습하기';
+        });
+    }
 
-    // 2. 생성 프롬프트 강화 (5지선다 및 난이도 절대 준수)
-    async function generateWithAI(passage, level) {
+    async function generateWithAI(passage, level, count) {
         if (!currentApiKey) throw new Error('API 키 설정 필요');
         
         let languageMandate = "";
@@ -171,10 +178,11 @@ document.addEventListener('DOMContentLoaded', () => {
         당신은 아래의 **절대 원칙(MANDATES)**을 1%의 예외 없이 준수해야 합니다.
 
         ### 절대 원칙 (MANDATES)
-        1. **5지선다 (5-Way Options)**: 모든 문제는 반드시 ①, ②, ③, ④, ⑤의 5개 보기를 가져야 합니다. 4개 이하는 절대 허용되지 않습니다.
-        2. **언어 및 난이도**: ${languageMandate}
-        3. **구조적 복제**: ${examStyleProfile ? `제공된 [학습된 템플릿]의 구조(기호 사용, 질문 스타일)를 100% 동일하게 복제하십시오: \n${examStyleProfile}` : '지문 분석 후 변별력 있는 고퀄리티 문항을 설계하십시오.'}
-        4. **무오류성**: 정답은 논리적으로 유일해야 하며, 매력적인 오답을 설계하여 변별력을 확보하십시오.
+        1. **문항 개수 (Strict Quantity)**: 반드시 정확히 ${count}개의 문제를 생성하십시오. 더 적거나 더 많이 생성하지 마십시오.
+        2. **5지선다 (5-Way Options)**: 모든 문제는 반드시 ①, ②, ③, ④, ⑤의 5개 보기를 가져야 합니다. 4개 이하는 절대 허용되지 않습니다.
+        3. **언어 및 난이도**: ${languageMandate}
+        4. **구조적 복제**: ${examStyleProfile ? `제공된 [학습된 템플릿]의 구조(기호 사용, 질문 스타일)를 100% 동일하게 복제하십시오: \n${examStyleProfile}` : '지문 분석 후 변별력 있는 고퀄리티 문항을 설계하십시오.'}
+        5. **무오류성**: 정답은 논리적으로 유일해야 하며, 매력적인 오답을 설계하여 변별력을 확보하십시오.
 
         ### 출력 형식 (JSON ONLY)
         응답은 반드시 아래 구조의 순수 JSON이어야 합니다.
@@ -199,9 +207,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 model: MODEL_NAME,
                 messages: [
                     { role: "system", content: systemMessage },
-                    { role: "user", content: `CONTEXT: ${passage}\n\nLEVEL: ${level}\n\nTASK: Generate a high-quality exam set based on the mandates above.` }
+                    { role: "user", content: `CONTEXT: ${passage}\n\nLEVEL: ${level}\n\nQUANTITY: ${count}\n\nTASK: Generate exactly ${count} high-quality exam questions based on the mandates above.` }
                 ],
-                temperature: 0.3, // 일관성 극대화를 위해 낮춤
+                temperature: 0.3,
                 response_format: { type: "json_object" }
             })
         });
@@ -210,22 +218,32 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!response.ok) throw new Error(data.error?.message || '생성 실패');
         
         let content = data.choices[0].message.content;
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) content = jsonMatch[0];
-        const parsed = JSON.parse(content);
+        console.log("Raw AI Content:", content);
 
-        // 마지막 보정 (혹시라도 AI가 배열 길이를 어겼을 경우 체크)
-        if (parsed.questions) {
-            parsed.questions.forEach(q => {
-                if (!q.options || q.options.length < 5) throw new Error("AI가 5지선다 규칙을 위반했습니다. 다시 시도해 주세요.");
-            });
+        try {
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            if (jsonMatch) content = jsonMatch[0];
+            const parsed = JSON.parse(content);
+            if (parsed.questions) {
+                parsed.questions.forEach(q => {
+                    if (!q.options || q.options.length < 5) throw new Error("AI가 5지선다 규칙을 위반했습니다.");
+                });
+            }
+            return parsed;
+        } catch (err) {
+            console.error("AI JSON Parsing Error:", err);
+            throw new Error("AI 응답을 해석할 수 없습니다. 형식이 올바르지 않습니다.");
         }
-        return parsed;
     }
 
     function renderExamSet(set) {
         if (!generatedQuestionsContainer) return;
         generatedQuestionsContainer.innerHTML = '';
+        if (!set || !set.questions || !Array.isArray(set.questions)) {
+            generatedQuestionsContainer.innerHTML = '<p style="color:red">데이터 형식이 올바르지 않습니다.</p>';
+            return;
+        }
+
         const setDiv = document.createElement('div');
         setDiv.className = 'exam-set-container';
         setDiv.style.cssText = "background: #fff; padding: 25px; border: 1px solid #ccc; border-radius: 8px; color: #000; text-align: left;";
@@ -251,12 +269,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 <ul class="options-list" style="list-style: none; padding-left: 0; display: grid; gap: 10px;">
                     ${q.options.map(opt => `<li style="border: 1px solid #eee; padding: 12px; border-radius: 6px; background: #fff;">${opt}</li>`).join('')}
                 </ul>
-                <details style="margin-top: 15px; font-size: 0.9em; color: #27ae60; background: #f0fff4; padding: 12px; border-radius: 6px;">
+                <details style="margin-top: 15px; font-size: 0.9em; color: #27ae60; background: #f0fff4; padding: 12px; border-radius: 6px; border: 1px solid #c3e6cb;">
                     <summary style="cursor: pointer; font-weight: bold;">정답 및 해설</summary>
                     <p style="margin-top: 10px;"><strong>정답: ${q.answer}</strong></p>
                     <p style="color: #555; line-height: 1.5;">${q.explanation || ''}</p>
                 </details>
             `;
+            
             qDiv.querySelector('.add-save-btn').onclick = () => {
                 savedQuestions.push({ ...q, passage_context: set.passage_body });
                 updateSavedListUI();
@@ -264,6 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             questionsArea.appendChild(qDiv);
         });
+
         generatedQuestionsContainer.appendChild(setDiv);
         resultArea.scrollIntoView({ behavior: 'smooth' });
     }
@@ -291,14 +311,22 @@ document.addEventListener('DOMContentLoaded', () => {
         generatePredBtn.addEventListener('click', async (e) => {
             const text = document.getElementById('reading-material').value;
             const level = document.getElementById('predict-level').value;
+            const count = document.getElementById('predict-count').value;
             if (!text.trim()) return alert('지문을 입력하세요.');
+            
             const oldText = e.target.textContent;
             e.target.disabled = true;
             e.target.textContent = '원칙 준수하여 출제 중...';
+            
             try {
-                const examSet = await generateWithAI(text, level);
+                const examSet = await generateWithAI(text, level, count);
                 renderExamSet(examSet);
-            } catch (err) { alert('출제 실패: ' + err.message); } finally { e.target.disabled = false; e.target.textContent = oldText; }
+            } catch (err) {
+                alert('출제 실패: ' + err.message);
+            } finally {
+                e.target.disabled = false;
+                e.target.textContent = oldText;
+            }
         });
     }
 
@@ -315,9 +343,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const clearSavedBtn = document.getElementById('clear-saved');
-    if (clearSavedBtn) clearSavedBtn.onclick = () => { if (confirm('비울까요?')) { savedQuestions = []; updateSavedListUI(); } };
+    if (clearSavedBtn) {
+        clearSavedBtn.onclick = () => { if (confirm('비울까요?')) { savedQuestions = []; updateSavedListUI(); } };
+    }
+    
     if (localStorage.getItem('theme') === 'dark') body.classList.add('dark-mode');
-    if (themeToggle) themeToggle.addEventListener('click', () => { body.classList.toggle('dark-mode'); localStorage.setItem('theme', body.classList.contains('dark-mode') ? 'dark' : 'light'); });
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            body.classList.toggle('dark-mode');
+            localStorage.setItem('theme', body.classList.contains('dark-mode') ? 'dark' : 'light');
+        });
+    }
 
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
