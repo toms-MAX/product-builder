@@ -3,7 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // API Key (User provided)
     const GEMINI_API_KEY = 'AIzaSyCCdebA15oPSS5zKy49PSybrCvVSfmdZ24';
-    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // Using v1beta as it often has better compatibility with latest flash models
+    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     // Elements
     const themeToggle = document.getElementById('theme-toggle');
@@ -50,9 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     contents: [{ parts: [{ text: prompt }] }],
                     generationConfig: {
                         temperature: 0.7,
-                        topK: 40,
-                        topP: 0.95,
                         maxOutputTokens: 2048
+                        // Removed responseMimeType, topK, topP for maximum compatibility
                     }
                 })
             });
@@ -61,8 +61,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.error) throw new Error(data.error.message);
             
             let resultText = data.candidates[0].content.parts[0].text;
-            // Handle cases where AI wraps JSON in code blocks
-            resultText = resultText.replace(/```json/g, '').replace(/```/g, '').trim();
+            // Robust JSON extraction: Find the first '[' and last ']'
+            const startIdx = resultText.indexOf('[');
+            const endIdx = resultText.lastIndexOf(']');
+            
+            if (startIdx !== -1 && endIdx !== -1) {
+                resultText = resultText.substring(startIdx, endIdx + 1);
+            }
+            
             return JSON.parse(resultText);
         } catch (err) {
             console.error('Gemini API Error:', err);
@@ -352,6 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 - Difficulty Level: ${level}
                 - Output format: JSON array of objects (question, options, answer).
                 Ensure the questions are fresh and different from the template but follow its format.
+                Output should be a pure JSON array starting with '[' and ending with ']'.
                 `;
 
                 const questions = await generateWithGemini(prompt);
