@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.8.6 initialized (Precise Language Control)');
+    console.log('English Exam Assistant v2.8.8 initialized (Advanced Vision Analysis)');
     
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.3-70b-versatile';
@@ -222,7 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
           ]
         }`;
 
-        const response = await fetch(API_URL, {
+        const response = await fetchWithRetry(API_URL, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
