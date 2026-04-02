@@ -89,7 +89,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         const pageText = textContent.items.map(item => item.str).join(' ');
                         fullText += pageText + '\n';
                     }
-                    resolve(fullText);
+                    // Filter out Korean characters
+                    const filteredText = fullText.replace(/[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/g, '').replace(/\s+/g, ' ').trim();
+                    resolve(filteredText);
                 } catch (err) {
                     reject('PDF 파싱 오류: ' + err.message);
                 }
