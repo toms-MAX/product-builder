@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.6.0 initialized (Multi-Pattern Learning)');
+    console.log('English Exam Assistant v2.7.0 initialized (Seamless Input)');
     
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
@@ -8,7 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const apiKeyInput = document.getElementById('api-key-input');
     const saveKeyBtn = document.getElementById('save-key-btn');
+    const dropZone = document.getElementById('drop-zone');
     const examImageInput = document.getElementById('exam-image-input');
+    const previewContainer = document.getElementById('selected-files-preview');
     const analyzeStyleBtn = document.getElementById('analyze-style-btn');
     const styleProfileDisplay = document.getElementById('style-profile-display');
     
@@ -22,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultArea = document.getElementById('result-container');
 
     let savedQuestions = [];
+    let droppedFiles = []; // 드래그/붙여넣기된 파일 관리
     let currentApiKey = localStorage.getItem('groq_api_key') || DEFAULT_KEY;
     let examStyleProfile = localStorage.getItem('exam_style_profile') || '';
 
@@ -40,19 +43,79 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 1. 다중 이미지 패턴 학습 기능 (Multi-Vision)
+    // 1. 드래그 앤 드롭 & 붙여넣기 로직
+    dropZone.addEventListener('click', () => examImageInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        handleFiles(e.dataTransfer.files);
+    });
+
+    examImageInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+    // Ctrl+V 붙여넣기 이벤트
+    window.addEventListener('paste', (e) => {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        const files = [];
+        for (const item of items) {
+            if (item.type.indexOf('image') !== -1) {
+                files.push(item.getAsFile());
+            }
+        }
+        if (files.length > 0) handleFiles(files);
+    });
+
+    function handleFiles(files) {
+        for (const file of files) {
+            if (file.type.startsWith('image/')) {
+                droppedFiles.push(file);
+            }
+        }
+        updatePreview();
+    }
+
+    function updatePreview() {
+        previewContainer.innerHTML = '';
+        droppedFiles.forEach((file, index) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                item.innerHTML = `
+                    <img src="${e.target.result}">
+                    <button class="remove-btn" data-index="${index}">×</button>
+                `;
+                item.querySelector('.remove-btn').onclick = (ev) => {
+                    ev.stopPropagation();
+                    droppedFiles.splice(index, 1);
+                    updatePreview();
+                };
+                previewContainer.appendChild(item);
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // 2. 다중 이미지 패턴 학습 기능 (Multi-Vision)
     analyzeStyleBtn.addEventListener('click', async () => {
-        const files = examImageInput.files;
-        if (files.length === 0) return alert('참고할 문제 이미지를 하나 이상 선택해주세요.');
+        if (droppedFiles.length === 0) return alert('참고할 문제 이미지를 추가해주세요 (드래그 또는 붙여넣기).');
         if (!currentApiKey) return alert('API 키를 먼저 설정해주세요.');
 
         analyzeStyleBtn.disabled = true;
-        analyzeStyleBtn.textContent = `${files.length}개의 이미지 분석 중...`;
+        analyzeStyleBtn.textContent = `${droppedFiles.length}개의 이미지 분석 중...`;
 
         try {
             const imageContents = [];
-            for (let i = 0; i < files.length; i++) {
-                const base64 = await toBase64(files[i]);
+            for (const file of droppedFiles) {
+                const base64 = await toBase64(file);
                 imageContents.push({ type: "image_url", image_url: { url: base64 } });
             }
 
@@ -84,12 +147,12 @@ document.addEventListener('DOMContentLoaded', () => {
             examStyleProfile = analysis;
             styleProfileDisplay.style.display = 'block';
             styleProfileDisplay.innerHTML = `✨ <strong>학습된 멀티 패턴 가이드:</strong><br>${analysis}`;
-            alert(`${files.length}개의 이미지로부터 문제 패턴 학습 완료!`);
+            alert(`${droppedFiles.length}개의 이미지로부터 문제 패턴 학습 완료!`);
         } catch (err) {
             alert('분석 실패: ' + err.message);
         } finally {
             analyzeStyleBtn.disabled = false;
-            analyzeStyleBtn.textContent = '선택한 모든 이미지 패턴 학습하기';
+            analyzeStyleBtn.textContent = '추가된 모든 패턴 학습하기';
         }
     });
 
@@ -102,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ### 출제 원칙
         1. **다양한 패턴 복제**: 학습된 가이드에 있는 여러 문제 형태(기호 사용법, 질문 방식 등)를 골고루 섞어 새로운 지문에 적용하십시오.
         2. **지문 동시 제공**: 각 문제마다 풀이에 필요한 변형 지문(passage_context)을 반드시 포함하십시오.
-        3. **무오류 검증**: 5지선다 여부, 정답의 유일성, 기호 표시 누락 등을 최종 검토하십시오.`;
+        3. **무오류 검증**: 5지선다 여부, 정답의 유일성, 지문 내 기호 표시 누락 등을 최종 검토하십시오.`;
 
         try {
             const response = await fetch(API_URL, {
@@ -188,6 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
             qDiv.className = 'question-item';
             qDiv.innerHTML = `
                 <button class="add-save-btn" style="background:#e74c3c">삭제</button>
+                <div class="passage-box" style="font-size: 0.8em; color: #666; max-height: 60px; overflow: hidden; margin-bottom: 5px;">${q.passage_context || ''}</div>
                 <span class="question-text">${index + 1}. ${q.question}</span>
             `;
             qDiv.querySelector('button').onclick = () => {
@@ -200,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showLoading(btn, isLoading) {
         btn.disabled = isLoading;
-        btn.textContent = isLoading ? '멀티 패턴 분석 중...' : btn.dataset.oldText || btn.textContent;
+        btn.textContent = isLoading ? '출제 중...' : btn.dataset.oldText || btn.textContent;
         if (isLoading) btn.dataset.oldText = btn.textContent;
     }
 
