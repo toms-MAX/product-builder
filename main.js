@@ -1,12 +1,17 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.4.0 initialized (Self-Refinement & Logic Fix)');
+    console.log('English Exam Assistant v2.5.0 initialized (Vision & Context)');
     
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
+    const VISION_MODEL = 'llama-3.2-11b-vision-preview';
     const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
     const apiKeyInput = document.getElementById('api-key-input');
     const saveKeyBtn = document.getElementById('save-key-btn');
+    const examImageInput = document.getElementById('exam-image-input');
+    const analyzeStyleBtn = document.getElementById('analyze-style-btn');
+    const styleProfileDisplay = document.getElementById('style-profile-display');
+    
     const themeToggle = document.getElementById('theme-toggle');
     const body = document.body;
     const tabBtns = document.querySelectorAll('.tab-btn');
@@ -17,8 +22,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultArea = document.getElementById('result-container');
 
     let savedQuestions = [];
-
     let currentApiKey = localStorage.getItem('groq_api_key') || DEFAULT_KEY;
+    let examStyleProfile = localStorage.getItem('exam_style_profile') || '';
+
+    if (examStyleProfile) styleProfileDisplay.style.display = 'block';
     apiKeyInput.value = currentApiKey === DEFAULT_KEY ? '' : currentApiKey;
 
     saveKeyBtn.addEventListener('click', () => {
@@ -26,16 +33,68 @@ document.addEventListener('DOMContentLoaded', () => {
         if (newKey) {
             localStorage.setItem('groq_api_key', newKey);
             currentApiKey = newKey;
-            alert('Groq API 키가 저장되었습니다. 버전 2.4.0의 고퀄리티 출제 로직이 적용됩니다!');
-        } else {
-            localStorage.removeItem('groq_api_key');
-            currentApiKey = DEFAULT_KEY;
-            alert('기본 설정으로 재설정되었습니다.');
+            alert('API 키가 저장되었습니다.');
+        }
+    });
+
+    // 1. 이미지 스타일 분석 기능 (Vision)
+    analyzeStyleBtn.addEventListener('click', async () => {
+        const file = examImageInput.files[0];
+        if (!file) return alert('분석할 시험지 이미지를 선택해주세요.');
+        if (!currentApiKey) return alert('API 키를 먼저 설정해주세요.');
+
+        analyzeStyleBtn.disabled = true;
+        analyzeStyleBtn.textContent = '이미지 분석 중...';
+
+        try {
+            const base64Image = await toBase64(file);
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${currentApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: VISION_MODEL,
+                    messages: [
+                        {
+                            role: "user",
+                            content: [
+                                { type: "text", text: "이 시험지 이미지에서 사용된 문제 유형(어법, 빈칸 등), 보기 형식, 질문의 말투, 난이도 특징을 분석하여 핵심 요약만 한국어로 적어줘. 이 내용은 나중에 비슷한 문제를 출제하는 데 사용될 거야." },
+                                { type: "image_url", image_url: { url: base64Image } }
+                            ]
+                        }
+                    ]
+                })
+            });
+
+            if (!response.ok) throw new Error('Vision API 요청 실패');
+            const data = await response.json();
+            const analysis = data.choices[0].message.content;
+            
+            localStorage.setItem('exam_style_profile', analysis);
+            examStyleProfile = analysis;
+            styleProfileDisplay.style.display = 'block';
+            alert('시험지 스타일 학습 완료! 이제 생성되는 문제에 이 스타일이 반영됩니다.');
+        } catch (err) {
+            alert('분석 실패: ' + err.message);
+        } finally {
+            analyzeStyleBtn.disabled = false;
+            analyzeStyleBtn.textContent = '이미지에서 출제 유형 학습하기';
         }
     });
 
     async function generateWithAI(prompt) {
         if (!currentApiKey) throw new Error('API 키를 먼저 설정해주세요!');
+
+        const systemMessage = `당신은 대한민국 최고의 영어 내신 시험 출제 전문가입니다.
+        ${examStyleProfile ? `\n[학습된 출제 스타일]:\n${examStyleProfile}` : ''}
+        
+        ### 출제 원칙
+        1. **지문 동시 제공 (필수)**: 각 문제마다 해당 문제를 풀기 위해 필요한 지문 영역을 'passage_context' 필드에 반드시 포함하십시오.
+        2. **지문 변형**: 문장 삽입이나 어법 문제는 지문 내에 [1]~[5] 또는 ⓐ~ⓔ 표시를 넣은 변형된 지문을 제공하십시오.
+        3. **5지선다**: 모든 문제는 반드시 ①~⑤ 보기를 가져야 합니다.
+        4. **검토**: 문제에 논리적 오류가 없는지, 정답이 명확한지 자가 검토 후 최종 JSON을 출력하십시오.`;
 
         try {
             const response = await fetch(API_URL, {
@@ -47,53 +106,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({
                     model: MODEL_NAME,
                     messages: [
-                        {
-                            role: "system",
-                            content: `당신은 대한민국 최고의 영어 내신 시험 출제 전문가입니다. 당신은 단순히 문제를 생성하는 것을 넘어, 생성된 문제의 논리적 결함(오류)을 스스로 검토하고 수정하는 능력을 갖추고 있습니다.
-
-### 출제 원칙 (고퀄리티 & 무오류)
-1. **유형별 정교함**:
-    - **문장 삽입**: 지문에서 특정 문장을 추출하여 문제에 제시하고, 지문 내에는 [1], [2], [3], [4], [5] 위치를 표시해야 합니다. (제시된 문장이 지문에 그대로 남아있으면 절대 안 됨)
-    - **어법**: 중/고교 핵심 문법(관계사, 수동태, 분사구문 등)을 교묘하게 변형하여 출제하십시오.
-    - **5지선다**: 모든 문제는 반드시 ①, ②, ③, ④, ⑤의 5개 보기를 가져야 합니다.
-2. **검토 프로세스 (Self-Correction)**:
-    - 문제를 출력하기 전, 다음 사항을 스스로 체크하십시오:
-      - "보기 5개가 모두 있는가?"
-      - "정답이 유일하고 명확한가?"
-      - "삽입/순서 문제에서 지문 조작이 완벽한가?"
-3. **데이터 구조**: 아래의 JSON 배열 형식을 엄격히 준수하십시오.
-[
-  {
-    "type": "유형명",
-    "question": "한글 질문 (문장 삽입 시 제시문 포함)",
-    "options": ["①...", "②...", "③...", "④...", "⑤..."],
-    "answer": "①",
-    "level": "medium/hard",
-    "passage_modified": "수정된 지문 (삽입 위치 [1]~[5] 등이 포함된 경우만 작성, 없으면 빈 문자열)"
-  }
-]`
-                        },
-                        {
-                            role: "user",
-                            content: prompt
-                        }
+                        { role: "system", content: systemMessage },
+                        { role: "user", content: prompt }
                     ],
-                    temperature: 0.4, // 창의성보다는 논리적 정확성을 위해 낮춤
+                    temperature: 0.4,
                     response_format: { type: "json_object" }
                 })
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error?.message || 'API 요청 실패');
-            }
-
             const data = await response.json();
             const content = data.choices[0].message.content;
             const parsed = JSON.parse(content);
-            
-            let questions = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.data || Object.values(parsed)[0]);
-            return questions;
+            return Array.isArray(parsed) ? parsed : (parsed.questions || parsed.data || Object.values(parsed)[0]);
         } catch (err) {
             console.error('API Error:', err);
             throw err;
@@ -106,28 +130,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const qDiv = document.createElement('div');
             qDiv.className = 'question-item';
             
-            // 삽입 위치 표시가 있는 수정된 지문이 있다면 표시
-            const passageDisplay = q.passage_modified ? `
-                <div class="modified-passage" style="background: #f0f4f8; padding: 10px; border-radius: 5px; margin: 10px 0; font-style: italic; font-size: 0.9em; border-left: 4px solid #3498db;">
-                    <strong>[문제용 지문 변형]</strong><br>${q.passage_modified}
-                </div>
-            ` : '';
-
             qDiv.innerHTML = `
                 <div style="margin-bottom: 10px;">
                     <span class="badge" style="background: #3498db; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; margin-right: 5px;">${q.type || '내신'}</span>
-                    <span class="badge" style="background: #e67e22; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em;">High Quality</span>
+                    <span class="badge" style="background: #2ecc71; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75em;">지문 포함</span>
                 </div>
                 <button class="add-save-btn">담기</button>
-                <span class="question-text">${index + 1}. ${q.question}</span>
-                ${passageDisplay}
+                
+                <div class="passage-box" style="background: #f8f9fa; padding: 12px; border-radius: 6px; border-left: 4px solid #3498db; margin: 10px 0; font-size: 0.9em; line-height: 1.6;">
+                    ${q.passage_context || '지문 정보가 없습니다.'}
+                </div>
+
+                <span class="question-text" style="font-weight: bold; display: block; margin: 10px 0;">${index + 1}. ${q.question}</span>
+                
                 <ul class="options-list">
                     ${q.options.map(opt => `<li>${opt}</li>`).join('')}
                 </ul>
-                <details style="margin-top: 10px; font-size: 0.85em; color: #27ae60;">
-                    <summary style="cursor: pointer;">해설 및 정답 확인</summary>
-                    <p style="margin-top: 5px; font-weight: bold;">정답: ${q.answer}</p>
-                    <p style="color: #666;">* 본 문제는 AI에 의해 2단계 검증을 거쳐 생성되었습니다.</p>
+                
+                <details style="margin-top: 15px; font-size: 0.85em; color: #27ae60; background: #f0fff4; padding: 8px; border-radius: 4px;">
+                    <summary style="cursor: pointer; font-weight: bold;">정답 및 해설</summary>
+                    <p style="margin-top: 5px;"><strong>정답: ${q.answer}</strong></p>
+                    <p style="color: #666; font-size: 0.9em;">${q.explanation || '해당 문제는 학습된 스타일을 바탕으로 정밀하게 출제되었습니다.'}</p>
                 </details>
             `;
             qDiv.querySelector('button').onclick = () => {
@@ -140,6 +163,17 @@ document.addEventListener('DOMContentLoaded', () => {
         resultArea.scrollIntoView({ behavior: 'smooth' });
     }
 
+    // 유틸리티: 이미지를 Base64로 변환
+    function toBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+        });
+    }
+
+    // --- 기존 UI 로직 유지 ---
     function updateSavedListUI() {
         savedCountBadge.textContent = savedQuestions.length;
         savedQuestionsList.innerHTML = savedQuestions.length ? '' : '<p class="empty-msg">아직 담은 문제가 없습니다.</p>';
@@ -148,10 +182,8 @@ document.addEventListener('DOMContentLoaded', () => {
             qDiv.className = 'question-item';
             qDiv.innerHTML = `
                 <button class="add-save-btn" style="background:#e74c3c">삭제</button>
+                <div class="passage-box" style="font-size: 0.8em; color: #666; max-height: 60px; overflow: hidden; margin-bottom: 5px;">${q.passage_context || ''}</div>
                 <span class="question-text">${index + 1}. ${q.question}</span>
-                <ul class="options-list">
-                    ${q.options.map(opt => `<li>${opt}</li>`).join('')}
-                </ul>
             `;
             qDiv.querySelector('button').onclick = () => {
                 savedQuestions.splice(index, 1);
@@ -162,38 +194,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showLoading(btn, isLoading) {
-        if (isLoading) {
-            btn.disabled = true;
-            btn.dataset.oldText = btn.textContent;
-            btn.textContent = '고퀄리티 검토 및 출제 중 (약 10초 소요)...';
-        } else {
-            btn.disabled = false;
-            btn.textContent = btn.dataset.oldText;
-        }
+        btn.disabled = isLoading;
+        btn.textContent = isLoading ? 'AI 분석 및 출제 중...' : btn.dataset.oldText || btn.textContent;
+        if (isLoading) btn.dataset.oldText = btn.textContent;
     }
 
     document.getElementById('generate-prediction').addEventListener('click', async (e) => {
         const text = document.getElementById('reading-material').value;
         const level = document.getElementById('predict-level').value;
         const count = document.getElementById('predict-count').value;
-        
         if (!text.trim()) return alert('지문을 입력하세요.');
         
         showLoading(e.target, true);
         try {
-            const prompt = `[학습용 예시]
-            기출 유형: 어법 판단
-            질문: 다음 중 어법상 어색한 문장을 고르시오.
-            보기: ["① He enjoys playing the piano.", "② She has lived here for ten years.", "③ I look forward to meet you.", "④ They are used to waking up early.", "⑤ We should have studied harder."]
-            정답: ③
-
-            [요청]
-            위 예시의 퀄리티와 형식을 참고하여, 다음 지문에 대한 ${level} 난이도의 내신 문제 ${count}개를 출제하십시오.
-            **반드시 문장 삽입, 어법 오류 찾기, 빈칸 추론 등 복합적인 사고를 요하는 문제를 포함하고, 모든 문제는 5지선다로 구성하십시오.**
-
+            const prompt = `다음 지문을 분석하여 ${level} 난이도의 내신 문제 ${count}개를 출제하세요. 
+            반드시 각 문제마다 'passage_context' 필드에 해당 문제 풀이에 필요한 지문을 포함하고, 5지선다 형식을 유지하세요.
+            
             지문:
             ${text}`;
-            
             const questions = await generateWithAI(prompt);
             renderQuestions(questions);
         } catch (err) {
@@ -209,9 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const topic = document.getElementById('topic-select').value;
             const level = document.getElementById('level-select').value;
             const count = document.getElementById('question-count').value;
-            const prompt = `Generate ${count} extremely high-quality English exam questions about ${topic} for ${level} level. 
-            Follow the Korean national curriculum standards. 5 options for each.`;
-            
+            const prompt = `Generate ${count} English exam questions about ${topic} for ${level} level. 5 options each.`;
             const questions = await generateWithAI(prompt);
             renderQuestions(questions);
         } catch (err) {
@@ -233,4 +249,19 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('clear-saved').onclick = () => {
         if (confirm('비울까요?')) { savedQuestions = []; updateSavedListUI(); }
     };
+
+    if (localStorage.getItem('theme') === 'dark') body.classList.add('dark-mode');
+    themeToggle.addEventListener('click', () => {
+        body.classList.toggle('dark-mode');
+        localStorage.setItem('theme', body.classList.contains('dark-mode') ? 'dark' : 'light');
+    });
+
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            tabBtns.forEach(b => b.classList.remove('active'));
+            tabContents.forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(btn.getAttribute('data-tab')).classList.add('active');
+        });
+    });
 });
