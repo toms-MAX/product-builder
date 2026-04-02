@@ -3,8 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // API Key (User provided)
     const GEMINI_API_KEY = 'AIzaSyCCdebA15oPSS5zKy49PSybrCvVSfmdZ24';
-    // Using v1beta as it often has better compatibility with latest flash models
-    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // Using v1 endpoint with latest flash model for stability
+    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
 
     // Elements
     const themeToggle = document.getElementById('theme-toggle');
@@ -52,7 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     generationConfig: {
                         temperature: 0.7,
                         maxOutputTokens: 2048
-                        // Removed responseMimeType, topK, topP for maximum compatibility
                     }
                 })
             });
