@@ -1,3 +1,17 @@
+/* Version Tag */
+#version-tag {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    z-index: 1000;
+    pointer-events: none;
+}
+
 :root {
     --primary-color: #f39c12;
     --secondary-color: #e67e22;
