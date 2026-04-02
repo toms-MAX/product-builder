@@ -139,9 +139,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
 
-            if (!response.ok) throw new Error('Vision API 요청 실패');
-            const data = await response.json();
-            const analysis = data.choices[0].message.content;
+            const responseData = await response.json();
+
+            if (!response.ok) {
+                const errorMsg = responseData.error?.message || '알 수 없는 API 오류';
+                if (errorMsg.includes('limit')) {
+                    throw new Error(`API 사용량 제한 초과: 잠시 후 다시 시도하거나 이미지 수를 줄여주세요. (${errorMsg})`);
+                } else if (response.status === 413) {
+                    throw new Error('이미지 용량이 너무 큽니다. 더 작은 파일이나 캡처본을 사용해주세요.');
+                }
+                throw new Error(errorMsg);
+            }
+
+            const analysis = responseData.choices[0].message.content;
             
             localStorage.setItem('exam_style_profile', analysis);
             examStyleProfile = analysis;
@@ -149,6 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
             styleProfileDisplay.innerHTML = `✨ <strong>학습된 멀티 패턴 가이드:</strong><br>${analysis}`;
             alert(`${droppedFiles.length}개의 이미지로부터 문제 패턴 학습 완료!`);
         } catch (err) {
+            console.error('Vision Error Detail:', err);
             alert('분석 실패: ' + err.message);
         } finally {
             analyzeStyleBtn.disabled = false;
