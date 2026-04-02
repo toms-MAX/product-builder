@@ -1,9 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.7.1 initialized (Auto-Optimization)');
+    console.log('English Exam Assistant v2.7.2 initialized (Model Fix)');
     
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
-    const VISION_MODEL = 'llama-3.2-11b-vision-preview';
+    const VISION_MODEL = 'llama-3.2-90b-vision-preview'; // Decommissioned 모델 대체
     const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
     const apiKeyInput = document.getElementById('api-key-input');
