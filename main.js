@@ -1,9 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.2.1 initialized');
+    console.log('English Exam Assistant v2.3.0 initialized (Groq API)');
     
-    // 기본 키 (사용자 제공)
-    const DEFAULT_KEY = 'AIzaSyBTGGx3JaeGbgVMiOhb3PpjXXXTZMiulTQ';
-    const MODEL_NAME = 'gemini-1.5-flash';
+    // 기본 설정 (Groq API)
+    const DEFAULT_KEY = ''; 
+    const MODEL_NAME = 'llama-3.1-8b-instant';
+    const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
     // Elements
     const apiKeyInput = document.getElementById('api-key-input');
@@ -20,61 +21,68 @@ document.addEventListener('DOMContentLoaded', () => {
     let savedQuestions = [];
 
     // 1. API 키 로드 로직
-    let currentApiKey = localStorage.getItem('gemini_api_key') || DEFAULT_KEY;
+    let currentApiKey = localStorage.getItem('groq_api_key') || DEFAULT_KEY;
     apiKeyInput.value = currentApiKey === DEFAULT_KEY ? '' : currentApiKey;
 
     saveKeyBtn.addEventListener('click', () => {
         const newKey = apiKeyInput.value.trim();
         if (newKey) {
-            localStorage.setItem('gemini_api_key', newKey);
+            localStorage.setItem('groq_api_key', newKey);
             currentApiKey = newKey;
-            alert('API 키가 저장되었습니다. 이제 문제를 생성해보세요!');
+            alert('Groq API 키가 저장되었습니다. 이제 문제를 생성해보세요!');
         } else {
-            localStorage.removeItem('gemini_api_key');
+            localStorage.removeItem('groq_api_key');
             currentApiKey = DEFAULT_KEY;
-            alert('기본 API 키로 재설정되었습니다.');
+            alert('기본 설정으로 재설정되었습니다.');
         }
     });
 
-    // 2. AI 호출 함수 (최신 v1 엔드포인트)
-    async function generateWithGemini(prompt) {
-        const API_URL = `https://generativelanguage.googleapis.com/v1/models/${MODEL_NAME}:generateContent?key=${currentApiKey}`;
-        
+    // 2. AI 호출 함수 (Groq / OpenAI 호환)
+    async function generateWithAI(prompt) {
+        if (!currentApiKey) {
+            throw new Error('API 키를 먼저 설정해주세요!');
+        }
+
         try {
             const response = await fetch(API_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Authorization': `Bearer ${currentApiKey}`,
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
+                    model: MODEL_NAME,
+                    messages: [
+                        {
+                            role: "system",
+                            content: "You are a helpful English teacher. You MUST respond with a valid JSON array of objects. Each object must have 'question' (string), 'options' (array of 5 strings starting with ①, ②, ③, ④, ⑤), and 'answer' (string, e.g., '①')."
+                        },
+                        {
+                            role: "user",
+                            content: prompt
+                        }
+                    ],
+                    temperature: 0.7,
+                    response_format: { type: "json_object" }
                 })
             });
 
-            const data = await response.json();
-            
-            if (data.error) {
-                console.error('API Error:', data.error);
-                let errorMsg = data.error.message;
-                if (errorMsg.includes('not found')) {
-                    errorMsg = "모델을 찾을 수 없습니다. API 키가 최신 Gemini 모델(1.5 Flash)을 지원하지 않는 프로젝트의 키일 수 있습니다. Google AI Studio에서 새 키를 발급받으세요.";
-                } else if (errorMsg.includes('API key')) {
-                    errorMsg = "API 키가 올바르지 않거나 권한이 없습니다.";
-                }
-                throw new Error(errorMsg);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error?.message || 'API 요청 실패');
             }
+
+            const data = await response.json();
+            const content = data.choices[0].message.content;
             
-            const resultText = data.candidates[0].content.parts[0].text;
-            const startIdx = resultText.indexOf('[');
-            const endIdx = resultText.lastIndexOf(']');
-            if (startIdx === -1 || endIdx === -1) throw new Error("AI가 올바른 형식을 생성하지 못했습니다. 다시 시도해주세요.");
-            
-            return JSON.parse(resultText.substring(startIdx, endIdx + 1));
+            // Groq may return the array wrapped in an object if response_format is json_object
+            const parsed = JSON.parse(content);
+            return Array.isArray(parsed) ? parsed : (parsed.questions || Object.values(parsed)[0]);
         } catch (err) {
+            console.error('API Error:', err);
             throw err;
         }
     }
-
-    // --- 이하 기존 UI 로직 (유지) ---
 
     // Theme
     if (localStorage.getItem('theme') === 'dark') body.classList.add('dark-mode');
@@ -96,6 +104,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderQuestions(questions) {
         generatedQuestionsContainer.innerHTML = '';
+        if (!Array.isArray(questions)) {
+            throw new Error("AI가 유효한 문제 형식을 생성하지 못했습니다.");
+        }
         questions.forEach((q, index) => {
             const qDiv = document.createElement('div');
             qDiv.className = 'question-item';
@@ -153,8 +164,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!text.trim()) return alert('지문을 입력하세요.');
         showLoading(e.target, true);
         try {
-            const prompt = `영어 시험 출제 위원으로서 다음 지문을 바탕으로 중학교 수준 예상 문제 5개를 JSON 배열로 만드세요. [{"question":"문항","options":["①..","②..","③..","④..","⑤.."],"answer":"①"}] \n\n지문:\n${text}`;
-            const questions = await generateWithGemini(prompt);
+            const prompt = `영어 시험 출제 위원으로서 다음 지문을 바탕으로 중학교 수준 예상 문제 5개를 만드세요. 반드시 JSON 배열 형식으로만 응답하세요. \n\n지문:\n${text}`;
+            const questions = await generateWithAI(prompt);
             renderQuestions(questions);
         } catch (err) {
             alert('오류: ' + err.message);
@@ -170,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const level = document.getElementById('level-select').value;
             const count = document.getElementById('question-count').value;
             const prompt = `Generate ${count} English exam questions about ${topic} for ${level} level in JSON array format. Questions in Korean, options in English.`;
-            const questions = await generateWithGemini(prompt);
+            const questions = await generateWithAI(prompt);
             renderQuestions(questions);
         } catch (err) {
             alert('오류: ' + err.message);
