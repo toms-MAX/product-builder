@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('English Exam Assistant v2.8.3 initialized (Difficulty-based Options)');
+    console.log('English Exam Assistant v2.8.4 initialized (Strict Enforce Mode)');
     
     const DEFAULT_KEY = ''; 
     const MODEL_NAME = 'llama-3.1-8b-instant';
@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (examStyleProfile) {
         styleProfileDisplay.style.display = 'block';
-        styleProfileDisplay.innerHTML = `✨ <strong>학습된 출제 가이드 적용 중</strong>`;
+        styleProfileDisplay.innerHTML = `✨ <strong>학습된 출제 템플릿이 활성화되었습니다.</strong>`;
     }
     apiKeyInput.value = currentApiKey === DEFAULT_KEY ? '' : currentApiKey;
 
@@ -59,12 +59,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const MAX_WIDTH = 1280;
                     let width = img.width;
                     let height = img.height;
-                    if (width > MAX_WIDTH) {
-                        height *= MAX_WIDTH / width;
-                        width = MAX_WIDTH;
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
+                    if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                    canvas.width = width; canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
                     resolve(canvas.toDataURL('image/jpeg', 0.8));
@@ -79,16 +75,11 @@ document.addEventListener('DOMContentLoaded', () => {
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
         dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
     }
-    
-    if (examImageInput) {
-        examImageInput.addEventListener('change', (e) => handleFiles(e.target.files));
-    }
+    if (examImageInput) examImageInput.addEventListener('change', (e) => handleFiles(e.target.files));
 
     window.addEventListener('paste', (e) => {
         const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (const item of items) {
-            if (item.type.indexOf('image') !== -1) handleFiles([item.getAsFile()]);
-        }
+        for (const item of items) { if (item.type.indexOf('image') !== -1) handleFiles([item.getAsFile()]); }
     });
 
     async function handleFiles(files) {
@@ -118,89 +109,88 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (analyzeStyleBtn) {
-        analyzeStyleBtn.addEventListener('click', async () => {
-            if (droppedFiles.length === 0) return alert('참고할 이미지를 추가해주세요.');
-            if (!currentApiKey) return alert('API 키를 먼저 설정해주세요.');
+    // 1. 비전 분석 프롬프트 고도화 (구조 추출 중심)
+    analyzeStyleBtn.addEventListener('click', async () => {
+        if (droppedFiles.length === 0) return alert('참고할 이미지를 추가해주세요.');
+        if (!currentApiKey) return alert('API 키를 먼저 설정해주세요.');
 
-            analyzeStyleBtn.disabled = true;
-            analyzeStyleBtn.textContent = '패턴 분석 중...';
+        analyzeStyleBtn.disabled = true;
+        analyzeStyleBtn.textContent = '구조 분석 및 템플릿화 중...';
 
-            const imageContents = droppedFiles.map(dataUrl => ({ type: "image_url", image_url: { url: dataUrl } }));
-            let success = false;
-            let lastError = '';
+        const imageContents = droppedFiles.map(dataUrl => ({ type: "image_url", image_url: { url: dataUrl } }));
+        let success = false;
+        let lastError = '';
 
-            for (const modelId of VISION_MODELS) {
-                try {
-                    const response = await fetch(API_URL, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            model: modelId,
-                            messages: [{
-                                role: "user",
-                                content: [
-                                    { type: "text", text: "이 이미지의 영어 문제 형태를 분석해줘. 질문의 의도, 보기를 구성하는 방식, 지문 내의 기호 활용법 등을 파악해서 가이드를 작성해줘." },
-                                    ...imageContents
-                                ]
-                            }]
-                        })
-                    });
-                    const responseData = await response.json();
-                    if (response.ok) {
-                        examStyleProfile = responseData.choices[0].message.content;
-                        localStorage.setItem('exam_style_profile', examStyleProfile);
-                        styleProfileDisplay.style.display = 'block';
-                        alert('문제 형태 학습 완료!');
-                        success = true;
-                        break;
-                    } else {
-                        lastError = responseData.error?.message || '알 수 없는 오류';
-                    }
-                } catch (err) {
-                    lastError = err.message;
-                }
-            }
-            if (!success) alert('이미지 분석 실패: ' + lastError);
-            analyzeStyleBtn.disabled = false;
-            analyzeStyleBtn.textContent = '추가된 모든 패턴 학습하기';
-        });
-    }
+        for (const modelId of VISION_MODELS) {
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: modelId,
+                        messages: [{
+                            role: "user",
+                            content: [
+                                { type: "text", text: "이 이미지에 있는 문제들의 '구조적 특징'을 기술 명세서처럼 분석해줘. 반드시 다음 항목을 포함해: 1. 지문에 삽입된 특수 기호 종류([1], ⓐ 등), 2. 질문의 전형적인 말투, 3. 보기(Options)의 구성 방식(길이, 개수, 언어 비중). 이 명세서는 나중에 동일한 형태의 문제를 생성하는 템플릿으로 사용될 거야." },
+                                ...imageContents
+                            ]
+                        }]
+                    })
+                });
+                const responseData = await response.json();
+                if (response.ok) {
+                    examStyleProfile = responseData.choices[0].message.content;
+                    localStorage.setItem('exam_style_profile', examStyleProfile);
+                    styleProfileDisplay.style.display = 'block';
+                    styleProfileDisplay.innerHTML = `✨ <strong>템플릿 분석 완료 (적용 중)</strong>`;
+                    alert('문제 구조 학습이 완료되었습니다! 이제 모든 생성은 이 템플릿을 따릅니다.');
+                    success = true;
+                    break;
+                } else { lastError = responseData.error?.message || 'Error'; }
+            } catch (err) { lastError = err.message; }
+        }
+        if (!success) alert('분석 실패: ' + lastError);
+        analyzeStyleBtn.disabled = false;
+        analyzeStyleBtn.textContent = '추가된 모든 패턴 학습하기';
+    });
 
+    // 2. 생성 프롬프트 강화 (5지선다 및 난이도 절대 준수)
     async function generateWithAI(passage, level) {
         if (!currentApiKey) throw new Error('API 키 설정 필요');
         
-        // 난이도별 보기 언어 전략 설정
-        let optionGuideline = "";
+        let languageMandate = "";
         if (level === 'easy') {
-            optionGuideline = "보기를 주로 '한글'로 작성하여 중1 수준의 기초적인 이해도를 측정하십시오.";
+            languageMandate = "MANDATE: ALL options MUST be written in KOREAN (한글). DO NOT use English for options.";
         } else if (level === 'medium') {
-            optionGuideline = "보기에 '한글'과 '영어'를 적절히 혼용하여 중2~3 수준의 변별력을 확보하십시오.";
+            languageMandate = "MANDATE: Use a mix of KOREAN and ENGLISH for options to provide moderate difficulty.";
         } else {
-            optionGuideline = "보기를 주로 '영어'로 작성하여 고등 기초 수준의 높은 사고력을 요구하십시오.";
+            languageMandate = "MANDATE: ALL options MUST be written in ENGLISH (영어). DO NOT use Korean for options. Use advanced academic vocabulary.";
         }
 
-        const systemMessage = `당신은 대한민국 최고의 영어 교육 전문가이자 내신 출제 위원입니다.
-        반드시 JSON 형식으로만 응답하십시오. 응답은 반드시 유효한 JSON 객체여야 하며, 다른 설명 텍스트는 포함하지 마십시오.
-        
-        ### 출제 규칙
-        1. **5지선다 필수**: 모든 문제는 반드시 ①, ②, ③, ④, ⑤의 5개 보기를 가져야 합니다.
-        2. **난이도 반영**: ${optionGuideline}
-        3. **구조**:
+        const systemMessage = `당신은 대한민국 최고 수준의 영어 내신 출제 위원입니다. 
+        당신은 아래의 **절대 원칙(MANDATES)**을 1%의 예외 없이 준수해야 합니다.
+
+        ### 절대 원칙 (MANDATES)
+        1. **5지선다 (5-Way Options)**: 모든 문제는 반드시 ①, ②, ③, ④, ⑤의 5개 보기를 가져야 합니다. 4개 이하는 절대 허용되지 않습니다.
+        2. **언어 및 난이도**: ${languageMandate}
+        3. **구조적 복제**: ${examStyleProfile ? `제공된 [학습된 템플릿]의 구조(기호 사용, 질문 스타일)를 100% 동일하게 복제하십시오: \n${examStyleProfile}` : '지문 분석 후 변별력 있는 고퀄리티 문항을 설계하십시오.'}
+        4. **무오류성**: 정답은 논리적으로 유일해야 하며, 매력적인 오답을 설계하여 변별력을 확보하십시오.
+
+        ### 출력 형식 (JSON ONLY)
+        응답은 반드시 아래 구조의 순수 JSON이어야 합니다.
         {
-          "passage_header": "다음 글을 읽고 물음에 답하시오.",
-          "passage_body": "지문 내용 (기호 포함 가능)",
+          "passage_header": "지시문 (예: 다음 글을 읽고 물음에 답하시오.)",
+          "passage_body": "변형된 지문 (템플릿에 따른 기호 삽입 필수)",
           "questions": [
             {
               "type": "유형",
-              "question": "한글 질문",
+              "question": "질문",
               "options": ["①...", "②...", "③...", "④...", "⑤..."],
               "answer": "①",
-              "explanation": "출제 근거 및 해설"
+              "explanation": "해설"
             }
           ]
-        }
-        ${examStyleProfile ? `\n[참고할 스타일]:\n${examStyleProfile}` : ''}`;
+        }`;
 
         const response = await fetch(API_URL, {
             method: 'POST',
@@ -209,9 +199,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 model: MODEL_NAME,
                 messages: [
                     { role: "system", content: systemMessage },
-                    { role: "user", content: `지문:\n${passage}\n\n난이도: ${level}\n위 지문을 바탕으로 5지선다형 고퀄리티 문제 세트를 만드십시오.` }
+                    { role: "user", content: `CONTEXT: ${passage}\n\nLEVEL: ${level}\n\nTASK: Generate a high-quality exam set based on the mandates above.` }
                 ],
-                temperature: 0.4,
+                temperature: 0.3, // 일관성 극대화를 위해 낮춤
                 response_format: { type: "json_object" }
             })
         });
@@ -222,18 +212,20 @@ document.addEventListener('DOMContentLoaded', () => {
         let content = data.choices[0].message.content;
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) content = jsonMatch[0];
-        
-        return JSON.parse(content);
+        const parsed = JSON.parse(content);
+
+        // 마지막 보정 (혹시라도 AI가 배열 길이를 어겼을 경우 체크)
+        if (parsed.questions) {
+            parsed.questions.forEach(q => {
+                if (!q.options || q.options.length < 5) throw new Error("AI가 5지선다 규칙을 위반했습니다. 다시 시도해 주세요.");
+            });
+        }
+        return parsed;
     }
 
     function renderExamSet(set) {
         if (!generatedQuestionsContainer) return;
         generatedQuestionsContainer.innerHTML = '';
-        if (!set || !set.questions || !Array.isArray(set.questions)) {
-            generatedQuestionsContainer.innerHTML = '<p style="color:red">데이터 형식이 올바르지 않습니다.</p>';
-            return;
-        }
-
         const setDiv = document.createElement('div');
         setDiv.className = 'exam-set-container';
         setDiv.style.cssText = "background: #fff; padding: 25px; border: 1px solid #ccc; border-radius: 8px; color: #000; text-align: left;";
@@ -257,15 +249,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="add-save-btn" style="position: absolute; top: 0; right: 0;">담기</button>
                 </div>
                 <ul class="options-list" style="list-style: none; padding-left: 0; display: grid; gap: 10px;">
-                    ${(q.options || []).map(opt => `<li style="border: 1px solid #eee; padding: 12px; border-radius: 6px; background: #fff;">${opt}</li>`).join('')}
+                    ${q.options.map(opt => `<li style="border: 1px solid #eee; padding: 12px; border-radius: 6px; background: #fff;">${opt}</li>`).join('')}
                 </ul>
-                <details style="margin-top: 15px; font-size: 0.9em; color: #27ae60; background: #f0fff4; padding: 12px; border-radius: 6px; border: 1px solid #c3e6cb;">
+                <details style="margin-top: 15px; font-size: 0.9em; color: #27ae60; background: #f0fff4; padding: 12px; border-radius: 6px;">
                     <summary style="cursor: pointer; font-weight: bold;">정답 및 해설</summary>
                     <p style="margin-top: 10px;"><strong>정답: ${q.answer}</strong></p>
-                    <p style="color: #555; line-height: 1.5;">${q.explanation || '해당 지문의 논리적 구조를 바탕으로 출제되었습니다.'}</p>
+                    <p style="color: #555; line-height: 1.5;">${q.explanation || ''}</p>
                 </details>
             `;
-            
             qDiv.querySelector('.add-save-btn').onclick = () => {
                 savedQuestions.push({ ...q, passage_context: set.passage_body });
                 updateSavedListUI();
@@ -273,7 +264,6 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             questionsArea.appendChild(qDiv);
         });
-
         generatedQuestionsContainer.appendChild(setDiv);
         resultArea.scrollIntoView({ behavior: 'smooth' });
     }
@@ -302,20 +292,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const text = document.getElementById('reading-material').value;
             const level = document.getElementById('predict-level').value;
             if (!text.trim()) return alert('지문을 입력하세요.');
-            
             const oldText = e.target.textContent;
             e.target.disabled = true;
-            e.target.textContent = '고난도 세트 구성 중...';
-            
+            e.target.textContent = '원칙 준수하여 출제 중...';
             try {
                 const examSet = await generateWithAI(text, level);
                 renderExamSet(examSet);
-            } catch (err) {
-                alert('출제 실패: ' + err.message);
-            } finally {
-                e.target.disabled = false;
-                e.target.textContent = oldText;
-            }
+            } catch (err) { alert('출제 실패: ' + err.message); } finally { e.target.disabled = false; e.target.textContent = oldText; }
         });
     }
 
@@ -332,17 +315,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const clearSavedBtn = document.getElementById('clear-saved');
-    if (clearSavedBtn) {
-        clearSavedBtn.onclick = () => { if (confirm('비울까요?')) { savedQuestions = []; updateSavedListUI(); } };
-    }
-    
+    if (clearSavedBtn) clearSavedBtn.onclick = () => { if (confirm('비울까요?')) { savedQuestions = []; updateSavedListUI(); } };
     if (localStorage.getItem('theme') === 'dark') body.classList.add('dark-mode');
-    if (themeToggle) {
-        themeToggle.addEventListener('click', () => {
-            body.classList.toggle('dark-mode');
-            localStorage.setItem('theme', body.classList.contains('dark-mode') ? 'dark' : 'light');
-        });
-    }
+    if (themeToggle) themeToggle.addEventListener('click', () => { body.classList.toggle('dark-mode'); localStorage.setItem('theme', body.classList.contains('dark-mode') ? 'dark' : 'light'); });
 
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
