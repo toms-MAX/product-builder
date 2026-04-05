@@ -56,6 +56,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- ATOMIC OPERATIONS BASED ON JSON SPEC ---
 
+    // 0. Language Filtration (언어 필터링 연산)
+    async function opFilterLanguage(text) {
+        log('연산 시작: 언어 필터링 (영어 본문 정밀 추출)...', 'exec');
+        const prompt = `다음 텍스트는 한글 설명과 영어 본문이 섞여 있습니다. 
+        시험 문제가 출제될 '영어 본문'만 추출하여 반환하세요. 
+        한글 번역이나 지시문은 모두 제거하십시오.
+        
+        입력:
+        ${text}`;
+        
+        const res = await callAI([{ role: 'user', content: prompt }]);
+        log('언어 필터링 완료: 영어 본문 데이터 로드됨', 'success');
+        return res;
+    }
+
     // 1. Logic Set Loader (설계도 해석기)
     function loadLogicSet(rawInput) {
         try {
@@ -111,8 +126,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- MAIN PIPELINE ---
     generateBtn.onclick = async () => {
-        const text = readingMaterial.value.trim();
-        if (!text) return alert('지문을 입력하세요.');
+        const rawInput = readingMaterial.value.trim();
+        if (!rawInput) return alert('지문을 입력하세요.');
         if (!currentApiKey) return alert('API 키가 필요합니다.');
 
         generateBtn.disabled = true;
@@ -123,27 +138,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             log('System Booting... Micro-Computing Engine v4.0', 'info');
             
-            // 1. 설계도 로드 (기존에 업로드된 파일들 중 JSON이 있는지 확인)
+            // Step 0: 언어 필터링 (한글 제거 및 영어 본문 추출)
+            const cleanPassage = await opFilterLanguage(rawInput);
+
+            // 1. 설계도 로드
             const logicRaw = uploadedFiles.find(f => f.type === 'text')?.content || '';
             const hasLogic = loadLogicSet(logicRaw);
 
-            let finalPassage = text;
+            let finalPassage = cleanPassage;
             let finalQuestions = [];
 
             if (hasLogic) {
-                // [설계도 모드] 하드웨어 명세에 따라 지문 가공
-                finalPassage = await opInjectMarkers(text, logicInstructionSet.hardware_spec);
+                // [설계도 모드] 가공된 지문에 하드웨어 마커 주입
+                finalPassage = await opInjectMarkers(cleanPassage, logicInstructionSet.hardware_spec);
                 
-                // 가장 적합한 OP 3개를 골라 실행 (사용자 요청 문항 수에 맞게 분배)
                 const opsToRun = logicInstructionSet.micro_operations.slice(0, 3); 
                 log('병렬 연산 유닛 할당 시작...', 'exec');
                 
                 const results = await Promise.all(opsToRun.map(op => opExecuteCircuit(op, finalPassage, 1)));
                 finalQuestions = results.flat();
             } else {
-                // [일반 모드] 설계도 없을 시 기본 CPU 로직 작동
                 log('기본 연산 모드로 작동합니다.', 'info');
-                // (이전의 기본 연산 로직 호출...)
+                // 기본 모드 생략 (설계도 위주 작동)
             }
 
             renderFinalResults(finalPassage, finalQuestions);
