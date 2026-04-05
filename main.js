@@ -15,8 +15,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const saveKeyBtn = document.getElementById('save-key-btn');
     const computeLog = document.getElementById('compute-log');
     const factoryStatus = document.getElementById('factory-status');
+    const logicJsonInput = document.getElementById('logic-json-input');
 
-    let logicInstructionSet = null; // ChatGPT에서 받은 그 JSON이 저장될 레지스터
+    let logicInstructionSet = null; 
     let currentApiKey = localStorage.getItem('groq_api_key') || '';
     apiKeyInput.value = currentApiKey;
 
@@ -54,72 +55,44 @@ document.addEventListener('DOMContentLoaded', async () => {
         return data.choices[0].message.content;
     }
 
-    // --- ATOMIC OPERATIONS BASED ON JSON SPEC ---
+    // --- ATOMIC OPERATIONS ---
 
-    // 0. Language Filtration (언어 필터링 연산)
     async function opFilterLanguage(text) {
         log('연산 시작: 언어 필터링 (영어 본문 정밀 추출)...', 'exec');
-        const prompt = `다음 텍스트는 한글 설명과 영어 본문이 섞여 있습니다. 
-        시험 문제가 출제될 '영어 본문'만 추출하여 반환하세요. 
-        한글 번역이나 지시문은 모두 제거하십시오.
-        
-        입력:
-        ${text}`;
-        
+        const prompt = `다음 텍스트에서 시험 문제가 출제될 '영어 본문'만 추출하여 반환하세요. 한글은 모두 제거하십시오:\n\n${text}`;
         const res = await callAI([{ role: 'user', content: prompt }]);
-        log('언어 필터링 완료: 영어 본문 데이터 로드됨', 'success');
+        log('언어 필터링 완료', 'success');
         return res;
     }
 
-    // 1. Logic Set Loader (설계도 해석기)
     function loadLogicSet(rawInput) {
         try {
+            if (!rawInput.trim()) return false;
             const parsed = JSON.parse(rawInput);
             if (parsed.micro_operations) {
                 logicInstructionSet = parsed;
-                log(`로직 설계도 로드 완료: ${parsed.micro_operations.length}개의 연산 회로가 대기 중`, 'success');
+                log(`로직 설계도 로드 완료: ${parsed.micro_operations.length}개의 연산 회로 대기 중`, 'success');
                 return true;
             }
-        } catch (e) {
-            log('입력된 텍스트가 유효한 JSON 로직 설계도가 아닙니다. 일반 텍스트 분석 모드로 전환합니다.', 'info');
-            return false;
-        }
+        } catch (e) { return false; }
+        return false;
     }
 
-    // 2. Hardware Marker Injection (기호 매핑 연산)
     async function opInjectMarkers(passage, spec) {
         log('연산 시작: Physical Marker Layer 주입...', 'exec');
-        const prompt = `다음 지문에 하드웨어 명세에 따라 적절한 위치에 기호를 주입하세요.
-        규칙: ${spec.marker_placement_rule}
-        사용 가능 기호: ${spec.passage_markers.join(', ')}
-        
-        지문:
-        ${passage}`;
-        
+        const prompt = `다음 지문에 규칙(${spec.marker_placement_rule})에 따라 기호(${spec.passage_markers.join(',')})를 주입하세요:\n\n${passage}`;
         const res = await callAI([{ role: 'user', content: prompt }]);
-        log('마커 주입 완료 (Passage Instrumented)', 'success');
+        log('마커 주입 완료', 'success');
         return res;
     }
 
-    // 3. Instruction Execution (개별 OP 실행)
     async function opExecuteCircuit(op, passage, count) {
         log(`회로 가동: [${op.op_id}] ${op.type} 연산 중...`, 'exec');
-        
-        const systemPrompt = `당신은 영어 문제 생성 회로입니다. 다음 명세서(Spec)에 따라 지문에서 문제를 추출하고 오답을 합성하세요.
-        반드시 JSON으로 응답하십시오.
-        
-        [SCANNING LOGIC] ${op.scanning_logic}
-        [TRANSFORMATION RULES] ${JSON.stringify(op.transformation_rules)}
-        [OPTION ASSEMBLY] ${JSON.stringify(op.option_assembly)}
-        
-        출력 형식:
-        { "questions": [ { "type": "${op.type}", "question": "...", "options": ["①", "②", "③", "④", "⑤"], "answer": "...", "explanation": "..." } ] }`;
-
+        const systemPrompt = `당신은 영어 문제 생성 회로입니다. 다음 명세에 따라 문제를 생성하고 JSON으로 응답하세요.\n\n[SCANNING] ${op.scanning_logic}\n[TRANSFORM] ${JSON.stringify(op.transformation_rules)}\n[ASSEMBLY] ${JSON.stringify(op.option_assembly)}`;
         const res = await callAI([
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `본문:\n${passage}\n\n위 본문에서 ${count}문항을 연산하여 출력하십시오.` }
+            { role: 'user', content: `본문:\n${passage}\n\n${count}문항 생성.` }
         ], true);
-        
         log(`[${op.op_id}] 연산 완료`, 'success');
         return JSON.parse(res).questions;
     }
@@ -127,6 +100,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- MAIN PIPELINE ---
     generateBtn.onclick = async () => {
         const rawInput = readingMaterial.value.trim();
+        const logicPasteInput = logicJsonInput.value.trim();
+        
         if (!rawInput) return alert('지문을 입력하세요.');
         if (!currentApiKey) return alert('API 키가 필요합니다.');
 
@@ -136,37 +111,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         resultContainer.innerHTML = '';
 
         try {
-            log('System Booting... Micro-Computing Engine v4.0', 'info');
+            log('System Booting... Engine v4.0', 'info');
             
-            // Step 0: 언어 필터링 (한글 제거 및 영어 본문 추출)
-            const cleanPassage = await opFilterLanguage(rawInput);
-
-            // 1. 설계도 로드
-            const logicRaw = uploadedFiles.find(f => f.type === 'text')?.content || '';
+            let logicRaw = logicPasteInput || uploadedFiles.find(f => f.name.endsWith('.json'))?.content || '';
             const hasLogic = loadLogicSet(logicRaw);
 
+            const cleanPassage = await opFilterLanguage(rawInput);
             let finalPassage = cleanPassage;
             let finalQuestions = [];
 
             if (hasLogic) {
-                // [설계도 모드] 가공된 지문에 하드웨어 마커 주입
                 finalPassage = await opInjectMarkers(cleanPassage, logicInstructionSet.hardware_spec);
-                
-                const opsToRun = logicInstructionSet.micro_operations.slice(0, 3); 
-                log('병렬 연산 유닛 할당 시작...', 'exec');
-                
+                const count = parseInt(document.getElementById('predict-count').value) || 3;
+                const opsToRun = logicInstructionSet.micro_operations.slice(0, count); 
+                log(`${opsToRun.length}개 유닛 병렬 할당 시작...`, 'exec');
                 const results = await Promise.all(opsToRun.map(op => opExecuteCircuit(op, finalPassage, 1)));
                 finalQuestions = results.flat();
             } else {
                 log('기본 연산 모드로 작동합니다.', 'info');
-                // 기본 모드 생략 (설계도 위주 작동)
+                const basicOp = { op_id: "BASIC", type: "기본", scanning_logic: "All", transformation_rules: [], option_assembly: { format: "①~⑤" } };
+                finalQuestions = await opExecuteCircuit(basicOp, cleanPassage, 3);
             }
 
             renderFinalResults(finalPassage, finalQuestions);
-            log('All Operations Completed Successfully.', 'success');
-
+            log('All Operations Completed.', 'success');
         } catch (e) {
-            log('Critical System Failure: ' + e.message, 'error');
+            log('Failure: ' + e.message, 'error');
         } finally {
             generateBtn.disabled = false;
         }
@@ -204,9 +174,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function handleFiles(files) {
         for (const file of files) {
-            const text = file.type === 'application/pdf' ? await extractTextFromPdf(file) : await readFileAsText(file);
-            uploadedFiles.push({ name: file.name, content: text, type: 'text' });
-            log(`로직 데이터 로드됨: ${file.name}`);
+            try {
+                const text = file.type === 'application/pdf' ? await extractTextFromPdf(file) : await readFileAsText(file);
+                uploadedFiles.push({ name: file.name, content: text });
+                log(`데이터 로드됨: ${file.name}`);
+                if (file.name.endsWith('.json')) {
+                    logicJsonInput.value = text;
+                    log('JSON 설계도가 입력창에 자동 로드되었습니다.', 'success');
+                }
+            } catch (e) { log(`파일 로드 실패: ${file.name}`, 'error'); }
         }
         updatePreview();
     }

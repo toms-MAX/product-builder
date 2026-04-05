@@ -27,11 +27,17 @@
 
             <!-- 오른쪽: 문제 형식 입력창 -->
             <div class="style-section">
-                <h3>2. 문제 형식 참고 (PDF/이미지)</h3>
-                <div id="drop-zone" class="drop-zone">
-                    기출문제 PDF나 이미지를 드래그하세요.<br>
-                    <span style="font-size: 0.8em; color: #7f8c8d;">(클릭하여 파일 선택 가능)</span>
-                    <input type="file" id="exam-file-input" accept="image/*,.pdf" multiple style="display: none;">
+                <h3>2. 문제 형식 (Logic Specs)</h3>
+                
+                <!-- JSON 로직 입력창 추가 -->
+                <div class="logic-input-area" style="margin-bottom: 15px;">
+                    <label style="font-size: 0.8em; font-weight: bold; color: #7f8c8d; display: block; margin-bottom: 5px;">연산 설계도 (JSON) 붙여넣기:</label>
+                    <textarea id="logic-json-input" placeholder='ChatGPT가 생성한 JSON 코드를 여기에 붙여넣으세요...' style="height: 120px; font-family: monospace; font-size: 0.8em; width: 100%; border: 1px solid #ddd; border-radius: 4px; padding: 8px; box-sizing: border-box;"></textarea>
+                </div>
+
+                <div id="drop-zone" class="drop-zone" style="padding: 15px; font-size: 0.9em;">
+                    또는 기출 PDF/JSON 파일을 드래그하세요.<br>
+                    <input type="file" id="exam-file-input" accept="image/*,.pdf,.json" multiple style="display: none;">
                 </div>
                 <div id="selected-files-preview" class="file-list"></div>
                 
