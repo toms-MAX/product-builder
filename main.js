@@ -88,13 +88,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function opExecuteCircuit(op, passage, count) {
         log(`회로 가동: [${op.op_id}] ${op.type} 연산 중...`, 'exec');
-        const systemPrompt = `당신은 영어 문제 생성 회로입니다. 다음 명세에 따라 문제를 생성하고 JSON으로 응답하세요.\n\n[SCANNING] ${op.scanning_logic}\n[TRANSFORM] ${JSON.stringify(op.transformation_rules)}\n[ASSEMBLY] ${JSON.stringify(op.option_assembly)}`;
-        const res = await callAI([
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `본문:\n${passage}\n\n${count}문항 생성.` }
-        ], true);
-        log(`[${op.op_id}] 연산 완료`, 'success');
-        return JSON.parse(res).questions;
+        const systemPrompt = `당신은 영어 문제 생성 회로입니다. 다음 명세에 따라 문제를 생성하고 반드시 아래의 JSON 형식으로만 응답하세요.
+        
+        형식: { "questions": [ { "type": "...", "question": "...", "options": ["①", "②", "③", "④", "⑤"], "answer": "...", "explanation": "..." } ] }
+        
+        [SCANNING] ${op.scanning_logic}
+        [TRANSFORM] ${JSON.stringify(op.transformation_rules)}
+        [ASSEMBLY] ${JSON.stringify(op.option_assembly)}`;
+
+        try {
+            const res = await callAI([
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `본문:\n${passage}\n\n위 본문에서 ${count}문항을 생성하세요.` }
+            ], true);
+            
+            const data = JSON.parse(res);
+            // 데이터가 유효한지 확인 (questions 리스트가 없으면 빈 배열 반환)
+            if (data && Array.isArray(data.questions)) {
+                log(`[${op.op_id}] 연산 완료`, 'success');
+                return data.questions;
+            } else {
+                log(`[${op.op_id}] 연산 결과 데이터 규격 불일치`, 'error');
+                return [];
+            }
+        } catch (e) {
+            log(`[${op.op_id}] 연산 실패: ${e.message}`, 'error');
+            return [];
+        }
     }
 
     // --- MAIN PIPELINE ---
@@ -123,14 +143,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (hasLogic) {
                 finalPassage = await opInjectMarkers(cleanPassage, logicInstructionSet.hardware_spec);
                 const count = parseInt(document.getElementById('predict-count').value) || 3;
+                
+                // 로직에서 연산 리스트를 가져와서 개수만큼 실행
                 const opsToRun = logicInstructionSet.micro_operations.slice(0, count); 
                 log(`${opsToRun.length}개 유닛 병렬 할당 시작...`, 'exec');
+                
                 const results = await Promise.all(opsToRun.map(op => opExecuteCircuit(op, finalPassage, 1)));
-                finalQuestions = results.flat();
+                // null이나 undefined 필터링 후 합치기
+                finalQuestions = results.filter(r => r !== null).flat();
             } else {
                 log('기본 연산 모드로 작동합니다.', 'info');
                 const basicOp = { op_id: "BASIC", type: "기본", scanning_logic: "All", transformation_rules: [], option_assembly: { format: "①~⑤" } };
                 finalQuestions = await opExecuteCircuit(basicOp, cleanPassage, 3);
+            }
+
+            if (finalQuestions.length === 0) {
+                throw new Error('생성된 문제가 없습니다. 지문이나 로직을 확인해 주세요.');
             }
 
             renderFinalResults(finalPassage, finalQuestions);
@@ -149,16 +177,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         resultContainer.appendChild(pBox);
 
         questions.forEach((q, i) => {
+            // q가 존재하지 않으면 건너뜀 (방어적 코드)
+            if (!q) return;
+
             const qDiv = document.createElement('div');
             qDiv.className = 'question-item';
             qDiv.style.textAlign = 'left';
+            
+            const opts = Array.isArray(q.options) ? q.options : [];
+            
             qDiv.innerHTML = `
-                <div style="font-weight: bold; margin-bottom: 12px; font-size: 1.1em; color: #000;">${i + 1}. [${q.type}] ${q.question}</div>
+                <div style="font-weight: bold; margin-bottom: 12px; font-size: 1.1em; color: #000;">${i + 1}. [${q.type || '유형미정'}] ${q.question || '질문 데이터 없음'}</div>
                 <ul style="list-style: none; padding-left: 0; display: grid; gap: 8px;">
-                    ${q.options.map(opt => `<li style="background: #fff; padding: 10px; border: 1px solid #eee; border-radius: 4px; color: #333;">${opt}</li>`).join('')}
+                    ${opts.map(opt => `<li style="background: #fff; padding: 10px; border: 1px solid #eee; border-radius: 4px; color: #333;">${opt}</li>`).join('')}
                 </ul>
                 <div style="margin-top: 10px; color: #27ae60; font-size: 0.9em; padding: 10px; background: #f0fff4; border-radius: 4px;">
-                    <strong>정답: ${q.answer}</strong><br>${q.explanation || ''}
+                    <strong>정답: ${q.answer || '미지정'}</strong><br>${q.explanation || ''}
                 </div>
             `;
             resultContainer.appendChild(qDiv);
