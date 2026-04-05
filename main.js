@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Smart English Exam Generator initialized');
+    console.log('AI Exam Factory v3.0 initialized');
 
     const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
     const MODEL_NAME = 'llama-3.3-70b-versatile';
@@ -18,9 +18,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const apiKeyInput = document.getElementById('api-key-input');
     const saveKeyBtn = document.getElementById('save-key-btn');
     const themeToggle = document.getElementById('theme-toggle');
+    const factoryStatus = document.getElementById('factory-status');
 
     let questionTemplates = [];
-    let uploadedFiles = []; // { type: 'image'|'text', content: string }
+    let uploadedFiles = [];
     let currentApiKey = localStorage.getItem('groq_api_key') || '';
     apiKeyInput.value = currentApiKey;
 
@@ -28,31 +29,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const resp = await fetch('questions.json');
         questionTemplates = await resp.json();
-        console.log(`Loaded ${questionTemplates.length} templates.`);
-    } catch (e) {
-        console.error('Failed to load questions.json', e);
-    }
+    } catch (e) { console.error('Failed to load templates', e); }
 
-    // API Key Save
-    saveKeyBtn.addEventListener('click', () => {
+    saveKeyBtn.onclick = () => {
         currentApiKey = apiKeyInput.value.trim();
         localStorage.setItem('groq_api_key', currentApiKey);
         alert('API 키가 저장되었습니다.');
-    });
+    };
 
-    // Theme Toggle
     if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark-mode');
-    themeToggle.addEventListener('click', () => {
+    themeToggle.onclick = () => {
         document.body.classList.toggle('dark-mode');
         localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
-    });
+    };
 
     // File Handling
-    dropZone.addEventListener('click', () => examFileInput.click());
-    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-    dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
-    examFileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+    dropZone.onclick = () => examFileInput.click();
+    dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('dragover'); };
+    dropZone.ondragleave = () => dropZone.classList.remove('dragover');
+    dropZone.ondrop = (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); };
+    examFileInput.onchange = (e) => handleFiles(e.target.files);
 
     async function handleFiles(files) {
         for (const file of files) {
@@ -92,14 +88,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         uploadedFiles.forEach((file, index) => {
             const item = document.createElement('div');
             item.className = 'file-item';
-            item.style.width = '100px';
-            item.style.height = '30px';
-            item.style.background = '#eee';
-            item.style.fontSize = '10px';
-            item.style.padding = '5px';
-            item.style.borderRadius = '4px';
-            item.style.overflow = 'hidden';
-            item.innerHTML = `📄 ${file.name.substring(0, 10)}... <button class="remove-btn">×</button>`;
+            item.style.cssText = "width: 100px; height: 30px; background: #eee; font-size: 10px; padding: 5px; border-radius: 4px; overflow: hidden; position: relative;";
+            item.innerHTML = `📄 ${file.name.substring(0, 10)}... <button class="remove-btn" style="position:absolute; right:2px; top:2px;">×</button>`;
             item.querySelector('.remove-btn').onclick = (e) => {
                 e.stopPropagation();
                 uploadedFiles.splice(index, 1);
@@ -109,132 +99,175 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // AI Generation Logic
-    generateBtn.addEventListener('click', async () => {
-        const text = readingMaterial.value.trim();
-        if (!text) return alert('지문을 입력해주세요.');
-        if (!currentApiKey) return alert('API 키를 입력해주세요.');
+    // --- AI FACTORY AGENTS ---
 
-        generateBtn.disabled = true;
-        const originalText = generateBtn.textContent;
-        generateBtn.textContent = 'AI가 형식을 분석하고 문제를 만드는 중...';
+    function updateStepUI(step, status, detail = null) {
+        const item = document.getElementById(`step-${step}`);
+        const icon = item.querySelector('.step-icon');
+        const detailDiv = document.getElementById(`detail-${step}`);
+        
+        item.className = 'step-item ' + status;
+        if (status === 'active') icon.textContent = '🔵';
+        else if (status === 'complete') icon.textContent = '✅';
+        else icon.textContent = '⚪';
 
-        try {
-            // 1. Analyze Style (if any files uploaded)
-            let styleInfo = "일반적인 내신 문제 스타일";
-            if (uploadedFiles.length > 0) {
-                styleInfo = await analyzeUploadedStyles();
-            }
-
-            // 2. Select Templates & Generate
-            const level = document.getElementById('predict-level').value;
-            const count = document.getElementById('predict-count').value;
-            
-            const result = await generateQuestions(text, styleInfo, level, count);
-            renderResults(result);
-        } catch (e) {
-            alert('오류 발생: ' + e.message);
-        } finally {
-            generateBtn.disabled = false;
-            generateBtn.textContent = originalText;
-        }
-    });
-
-    async function analyzeUploadedStyles() {
-        const textSamples = uploadedFiles.filter(f => f.type === 'text').map(f => f.content).join('\n\n');
-        const images = uploadedFiles.filter(f => f.type === 'image').map(f => f.content);
-
-        const prompt = `당신은 영어 시험지 분석 전문가입니다. 제공된 텍스트/이미지를 보고 다음을 파악하세요:
-        1. 자주 나오는 문제 유형 (예: 빈칸, 순서, 어법)
-        2. 지문에 사용되는 특수 기호 (예: [A], (a), ❶)
-        3. 보기(Options)의 스타일
-        이 정보를 요약하여 아주 간결한 '출제 가이드라인'을 작성하세요.`;
-
-        const messages = [{ role: 'user', content: [{ type: 'text', text: prompt }] }];
-        if (textSamples) messages[0].content.push({ type: 'text', text: `참고 텍스트:\n${textSamples}` });
-        images.forEach(img => messages[0].content.push({ type: 'image_url', image_url: { url: img } }));
-
-        const resp = await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: images.length > 0 ? VISION_MODEL : MODEL_NAME, messages, temperature: 0.2 })
-        });
-        const data = await resp.json();
-        return data.choices[0].message.content;
+        if (detail) detailDiv.textContent = detail;
     }
 
-    async function generateQuestions(passage, styleInfo, level, count) {
-        // Sample some templates from questions.json to give AI ideas
-        const templatesSample = questionTemplates.slice(0, 10).map(t => `- ${t.type}: ${t.question}`).join('\n');
-
-        const systemPrompt = `당신은 영어 내신 문제 출제 위원입니다.
-        제공된 지문을 바탕으로 예상 문제를 생성하세요.
-
-        ### 지침:
-        1. **형식 참고**: 아래 [스타일 가이드]를 최우선으로 따르세요.
-        2. **템플릿 활용**: [문제 은행 샘플]의 유형을 참고하여 문제를 구성하세요.
-        3. **난이도**: ${level} 수준에 맞게 출제하세요.
-        4. **문항수**: 반드시 ${count}문제를 생성하세요.
-
-        [스타일 가이드]
-        ${styleInfo}
-
-        [문제 은행 샘플]
-        ${templatesSample}
-
-        ### 출력 형식 (JSON):
-        {
-          "passage": "기호가 포함되어 변형된 지문 (필요시)",
-          "questions": [
-            {
-              "type": "유형",
-              "question": "질문",
-              "options": ["①...", "②...", "③...", "④...", "⑤..."],
-              "answer": "정답 번호",
-              "explanation": "해설"
-            }
-          ]
-        }`;
-
+    async function callAI(messages, responseFormat = null, isVision = false) {
         const resp = await fetch(API_URL, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                model: MODEL_NAME,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: `본문:\n${passage}` }
-                ],
-                response_format: { type: "json_object" },
-                temperature: 0.5
+                model: isVision ? VISION_MODEL : MODEL_NAME,
+                messages: messages,
+                temperature: 0.3,
+                response_format: responseFormat ? { type: responseFormat } : undefined
             })
         });
         const data = await resp.json();
-        return JSON.parse(data.choices[0].message.content);
+        if (!resp.ok) throw new Error(data.error?.message || 'AI 호출 실패');
+        return data.choices[0].message.content;
     }
+
+    // [공정 1] 유형 분석가
+    async function agentAnalyzeStyle() {
+        updateStepUI(1, 'active', '기출문제를 분석하여 출제 경향을 파악 중...');
+        
+        const samples = uploadedFiles.map(f => f.type === 'text' ? f.content : f.content).join('\n\n');
+        const images = uploadedFiles.filter(f => f.type === 'image').map(f => f.content);
+        
+        const prompt = `당신은 영어 시험 분석 전문가입니다. 제공된 기출자료를 보고 다음을 리스트로 뽑으세요:
+        1. 주요 문제 유형 (예: 빈칸 추론, 순서 배열)
+        2. 지문 내 특수 기호 스타일 (예: [A], (a), ❶)
+        간결하게 핵심만 나열하세요.`;
+
+        const content = [{ type: 'text', text: prompt }];
+        if (samples) content.push({ type: 'text', text: `기출 텍스트:\n${samples}` });
+        images.forEach(img => content.push({ type: 'image_url', image_url: { url: img } }));
+
+        const result = await callAI([{ role: 'user', content }], null, images.length > 0);
+        updateStepUI(1, 'complete', '분석 완료: ' + result.substring(0, 50) + '...');
+        return result;
+    }
+
+    // [공정 2] 지문 설계자
+    async function agentAnnotatePassage(passage, styleGuide) {
+        updateStepUI(2, 'active', '본문에 기호 및 장치를 배치 중...');
+        
+        const prompt = `본문을 분석된 스타일에 맞춰 변형하세요. 
+        내용은 유지하되, 문제 출제를 위해 [A], (a), ❶ 같은 기호를 문맥에 맞는 위치에 삽입하세요.
+        
+        [스타일 가이드]
+        ${styleGuide}
+        
+        본문:
+        ${passage}`;
+
+        const result = await callAI([{ role: 'user', content: prompt }]);
+        updateStepUI(2, 'complete', '지문 설계 완료 (기호 삽입됨)');
+        return result;
+    }
+
+    // [공정 3] 문제 집필가
+    async function agentCreateQuestions(annotatedPassage, styleGuide, level, count) {
+        updateStepUI(3, 'active', '템플릿을 기반으로 문제를 출제 중...');
+        
+        const templateInfo = questionTemplates.slice(0, 5).map(t => `- ${t.type}: ${t.question}`).join('\n');
+        
+        const systemPrompt = `당신은 전문 출제 위원입니다. JSON 형식으로만 응답하세요.
+        난이도: ${level}, 문항수: ${count}
+        
+        [가이드] ${styleGuide}
+        [참고 템플릿]
+        ${templateInfo}
+        
+        출력 JSON 구조:
+        { "questions": [ { "type": "유형", "question": "질문", "options": ["①", "②", "③", "④", "⑤"], "answer": "정답", "explanation": "해설" } ] }`;
+
+        const result = await callAI([
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `설계된 지문:\n${annotatedPassage}` }
+        ], 'json_object');
+
+        updateStepUI(3, 'complete', `${count}문항 집필 완료`);
+        return JSON.parse(result);
+    }
+
+    // [공정 4] 품질 검수자
+    async function agentInspectQuestions(passage, rawData) {
+        updateStepUI(4, 'active', '문제의 논리적 오류를 검수 중...');
+        
+        const prompt = `다음 영어 문제들의 정답이 지문에서 명확히 도출되는지 검수하고, 필요시 더 정교하게 수정하세요.
+        JSON 형식으로 최종 결과만 반환하세요.
+        
+        지문: ${passage}
+        문제데이터: ${JSON.stringify(rawData)}`;
+
+        const result = await callAI([
+            { role: 'user', content: prompt }
+        ], 'json_object');
+
+        updateStepUI(4, 'complete', '최종 검수 및 품질 보증 완료');
+        return JSON.parse(result);
+    }
+
+    // --- 메인 공정 가동 ---
+    generateBtn.onclick = async () => {
+        const text = readingMaterial.value.trim();
+        if (!text) return alert('지문을 입력하세요.');
+        if (!currentApiKey) return alert('API 키를 설정하세요.');
+
+        generateBtn.disabled = true;
+        factoryStatus.style.display = 'block';
+        [1,2,3,4].forEach(i => updateStepUI(i, 'idle', '대기 중...'));
+
+        try {
+            // Step 1: Analyze
+            const styleGuide = uploadedFiles.length > 0 
+                ? await agentAnalyzeStyle() 
+                : "일반적인 수능/내신 유형 (빈칸, 주제, 어법)";
+
+            // Step 2: Annotate
+            const annotatedPassage = await agentAnnotatePassage(text, styleGuide);
+
+            // Step 3: Create
+            const level = document.getElementById('predict-level').value;
+            const count = document.getElementById('predict-count').value;
+            const rawQuestions = await agentCreateQuestions(annotatedPassage, styleGuide, level, count);
+
+            // Step 4: Inspect
+            const finalData = await agentInspectQuestions(annotatedPassage, rawQuestions);
+
+            renderResults({ passage: annotatedPassage, questions: finalData.questions });
+        } catch (e) {
+            alert('공정 오류: ' + e.message);
+        } finally {
+            generateBtn.disabled = false;
+        }
+    };
 
     function renderResults(data) {
         resultContainer.innerHTML = '';
-        if (data.passage) {
-            const pBox = document.createElement('div');
-            pBox.style.cssText = "padding: 15px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px; white-space: pre-wrap; line-height: 1.6;";
-            pBox.textContent = data.passage;
-            resultContainer.appendChild(pBox);
-        }
+        const pBox = document.createElement('div');
+        pBox.style.cssText = "padding: 20px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 25px; white-space: pre-wrap; line-height: 1.8; font-size: 1.1em; color: #000; text-align: left;";
+        pBox.textContent = data.passage;
+        resultContainer.appendChild(pBox);
 
         data.questions.forEach((q, i) => {
             const qDiv = document.createElement('div');
             qDiv.className = 'question-item';
+            qDiv.style.textAlign = 'left';
             qDiv.innerHTML = `
-                <div style="font-weight: bold; margin-bottom: 10px;">${i + 1}. [${q.type}] ${q.question}</div>
-                <ul class="options-list" style="list-style: none; padding-left: 0;">
-                    ${q.options.map(opt => `<li style="margin-bottom: 5px;">${opt}</li>`).join('')}
+                <div style="font-weight: bold; margin-bottom: 12px; font-size: 1.1em; color: #000;">${i + 1}. [${q.type}] ${q.question}</div>
+                <ul class="options-list" style="list-style: none; padding-left: 0; display: grid; gap: 8px;">
+                    ${q.options.map(opt => `<li style="background: #fff; padding: 10px; border: 1px solid #eee; border-radius: 4px; color: #333;">${opt}</li>`).join('')}
                 </ul>
-                <details style="margin-top: 10px; color: #27ae60;">
-                    <summary style="cursor: pointer;">정답 및 해설</summary>
-                    <div style="padding: 10px; background: #f0fff4; margin-top: 5px; border-radius: 4px;">
-                        <strong>정답: ${q.answer}</strong><br>
-                        ${q.explanation}
+                <details style="margin-top: 15px; color: #27ae60; background: #f0fff4; padding: 10px; border-radius: 6px;">
+                    <summary style="cursor: pointer; font-weight: bold;">정답 및 해설 보기</summary>
+                    <div style="margin-top: 10px;">
+                        <p><strong>정답: ${q.answer}</strong></p>
+                        <p style="font-size: 0.9em; line-height: 1.5;">${q.explanation}</p>
                     </div>
                 </details>
             `;
@@ -247,13 +280,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('export-pdf').onclick = async () => {
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF();
-        const content = document.getElementById('generated-questions');
-        const canvas = await html2canvas(content);
+        const content = document.getElementById('result-container');
+        const canvas = await html2canvas(content, { scale: 2 });
         const imgData = canvas.toDataURL('image/png');
-        const imgProps = pdf.getImageProperties(imgData);
         const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
         pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save('exam_questions.pdf');
+        pdf.save('exam_pro.pdf');
     };
 });
