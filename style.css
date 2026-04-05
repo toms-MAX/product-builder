@@ -196,17 +196,55 @@ p {
 }
 
 .main-container {
-    max-width: 700px;
+    max-width: 1000px;
     padding: 30px;
 }
 
-.tabs {
+.main-layout {
     display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-bottom: 25px;
-    border-bottom: 2px solid var(--shadow-color);
-    padding-bottom: 10px;
+    gap: 30px;
+    margin-top: 20px;
+    margin-bottom: 30px;
+}
+
+.input-section, .style-section {
+    flex: 1;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+}
+
+.input-section textarea {
+    flex: 1;
+    min-height: 300px;
+}
+
+.style-section {
+    background: rgba(0,0,0,0.03);
+    padding: 20px;
+    border-radius: 12px;
+}
+
+body.dark-mode .style-section {
+    background: rgba(255,255,255,0.05);
+}
+
+@media (max-width: 800px) {
+    .main-layout {
+        flex-direction: column;
+    }
+}
+
+.config-mini {
+    background: white;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+}
+
+body.dark-mode .config-mini {
+    background: #333;
+    border-color: #444;
 }
 
 .tab-btn {
