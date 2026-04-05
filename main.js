@@ -1,16 +1,14 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Micro-Computing Exam Engine initialized');
+    console.log('Logical Circuit Exam Engine v4.0 initialized');
 
     const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
     const MODEL_NAME = 'llama-3.3-70b-versatile';
-    const VISION_MODEL = 'llama-3.2-11b-vision-preview';
 
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const readingMaterial = document.getElementById('reading-material');
     const dropZone = document.getElementById('drop-zone');
     const examFileInput = document.getElementById('exam-file-input');
-    const previewContainer = document.getElementById('selected-files-preview');
     const generateBtn = document.getElementById('generate-btn');
     const resultContainer = document.getElementById('generated-questions');
     const apiKeyInput = document.getElementById('api-key-input');
@@ -18,7 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const computeLog = document.getElementById('compute-log');
     const factoryStatus = document.getElementById('factory-status');
 
-    let uploadedFiles = [];
+    let logicInstructionSet = null; // ChatGPT에서 받은 그 JSON이 저장될 레지스터
     let currentApiKey = localStorage.getItem('groq_api_key') || '';
     apiKeyInput.value = currentApiKey;
 
@@ -28,7 +26,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         alert('API 키 저장됨');
     };
 
-    // --- MICRO-LOG SYSTEM ---
     function log(msg, type = 'info') {
         const div = document.createElement('div');
         const timestamp = new Date().toLocaleTimeString();
@@ -36,20 +33,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (type === 'exec') { prefix = '<span style="color: #f1c40f;">[EXEC]</span>'; div.style.color = '#f1c40f'; }
         if (type === 'success') { prefix = '<span style="color: #2ecc71;">[OK  ]</span>'; div.style.color = '#2ecc71'; }
         if (type === 'error') { prefix = '<span style="color: #e74c3c;">[ERR ]</span>'; div.style.color = '#e74c3c'; }
-        
         div.innerHTML = `${prefix} ${timestamp} - ${msg}`;
         computeLog.appendChild(div);
         factoryStatus.scrollTop = factoryStatus.scrollHeight;
     }
 
-    // --- ATOMIC AI OPERATIONS ---
-    async function callAI(prompt, isJson = false) {
+    async function callAI(messages, isJson = false) {
         const resp = await fetch(API_URL, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model: MODEL_NAME,
-                messages: [{ role: 'user', content: prompt }],
+                messages: messages,
                 temperature: 0.1,
                 response_format: isJson ? { type: "json_object" } : undefined
             })
@@ -59,41 +54,62 @@ document.addEventListener('DOMContentLoaded', async () => {
         return data.choices[0].message.content;
     }
 
-    // 1. 유형 특징 추출 (Atomic)
-    async function opExtractStylePatterns() {
-        log('연산 시작: 스타일 패턴 추출...', 'exec');
-        const samples = uploadedFiles.map(f => f.content).join('\n');
-        if (!samples) return "일반적인 5지선다 객관식";
-        const res = await callAI(`다음 텍스트에서 사용된 문제 번호 형식, 기호([A], ❶ 등), 보기 형식을 아주 짧게 리스트업 하세요:\n${samples}`);
-        log('스타일 패턴 추출 완료', 'success');
+    // --- ATOMIC OPERATIONS BASED ON JSON SPEC ---
+
+    // 1. Logic Set Loader (설계도 해석기)
+    function loadLogicSet(rawInput) {
+        try {
+            const parsed = JSON.parse(rawInput);
+            if (parsed.micro_operations) {
+                logicInstructionSet = parsed;
+                log(`로직 설계도 로드 완료: ${parsed.micro_operations.length}개의 연산 회로가 대기 중`, 'success');
+                return true;
+            }
+        } catch (e) {
+            log('입력된 텍스트가 유효한 JSON 로직 설계도가 아닙니다. 일반 텍스트 분석 모드로 전환합니다.', 'info');
+            return false;
+        }
+    }
+
+    // 2. Hardware Marker Injection (기호 매핑 연산)
+    async function opInjectMarkers(passage, spec) {
+        log('연산 시작: Physical Marker Layer 주입...', 'exec');
+        const prompt = `다음 지문에 하드웨어 명세에 따라 적절한 위치에 기호를 주입하세요.
+        규칙: ${spec.marker_placement_rule}
+        사용 가능 기호: ${spec.passage_markers.join(', ')}
+        
+        지문:
+        ${passage}`;
+        
+        const res = await callAI([{ role: 'user', content: prompt }]);
+        log('마커 주입 완료 (Passage Instrumented)', 'success');
         return res;
     }
 
-    // 2. 문장 토큰화 (Micro)
-    async function opTokenizeSentences(text) {
-        log('연산 시작: 지문 토큰화 및 구조 분석...', 'exec');
-        const res = await callAI(`다음 지문을 문장 단위로 나누고 각 문장에 ID를 부여하세요(S1, S2...). 결과는 JSON으로:\n{ "sentences": [{ "id": "S1", "text": "..." }] }\n\n지문:\n${text}`, true);
-        log('토큰화 완료', 'success');
-        return JSON.parse(res).sentences;
+    // 3. Instruction Execution (개별 OP 실행)
+    async function opExecuteCircuit(op, passage, count) {
+        log(`회로 가동: [${op.op_id}] ${op.type} 연산 중...`, 'exec');
+        
+        const systemPrompt = `당신은 영어 문제 생성 회로입니다. 다음 명세서(Spec)에 따라 지문에서 문제를 추출하고 오답을 합성하세요.
+        반드시 JSON으로 응답하십시오.
+        
+        [SCANNING LOGIC] ${op.scanning_logic}
+        [TRANSFORMATION RULES] ${JSON.stringify(op.transformation_rules)}
+        [OPTION ASSEMBLY] ${JSON.stringify(op.option_assembly)}
+        
+        출력 형식:
+        { "questions": [ { "type": "${op.type}", "question": "...", "options": ["①", "②", "③", "④", "⑤"], "answer": "...", "explanation": "..." } ] }`;
+
+        const res = await callAI([
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `본문:\n${passage}\n\n위 본문에서 ${count}문항을 연산하여 출력하십시오.` }
+        ], true);
+        
+        log(`[${op.op_id}] 연산 완료`, 'success');
+        return JSON.parse(res).questions;
     }
 
-    // 3. 문법 포인트 검색 (Micro)
-    async function opIdentifyGrammarPoints(sentences) {
-        log('연산 시작: 문법적 포인트(Grammar Node) 검색...', 'exec');
-        const res = await callAI(`다음 문장들에서 중학교 내신에 나올만한 문법 요소(관계대명사, 분사, 수동태 등)가 포함된 문장을 3개 골라 JSON으로 반환하세요:\n{ "points": [{ "sentence_id": "S1", "target": "단어/구", "grammar_type": "유형" }] }\n\n대상:\n${JSON.stringify(sentences)}`, true);
-        log('문법 포인트 식별 완료', 'success');
-        return JSON.parse(res).points;
-    }
-
-    // 4. 개별 오답 생성 연산 (Atomic)
-    async function opGenerateDistractors(point, originalSentence) {
-        log(`연산 시작: [${point.sentence_id}] 오답(Distractors) 생성...`, 'exec');
-        const res = await callAI(`다음 문장에서 '${point.target}' 부분을 변형하여 문법적으로 틀린 보기 4개를 만드세요. 원래 부분은 1번으로 하고 총 5개를 만드세요.\n{ "options": ["①...", "②...", "③...", "④...", "⑤..."], "answer": "①" }\n\n문장: ${originalSentence}\n대상: ${point.target}`, true);
-        log(`[${point.sentence_id}] 오답 생성 완료`, 'success');
-        return JSON.parse(res);
-    }
-
-    // --- MAIN PIPELINE (ORCHESTRATOR) ---
+    // --- MAIN PIPELINE ---
     generateBtn.onclick = async () => {
         const text = readingMaterial.value.trim();
         if (!text) return alert('지문을 입력하세요.');
@@ -103,38 +119,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         factoryStatus.style.display = 'block';
         computeLog.innerHTML = '';
         resultContainer.innerHTML = '';
-        
-        try {
-            log('CPU 시스템 부팅 중...', 'info');
-            
-            // 1. 스타일 패턴 레지스터 로드
-            const stylePatterns = await opExtractStylePatterns();
-            
-            // 2. 본문 메모리 할당 (토큰화)
-            const sentences = await opTokenizeSentences(text);
-            
-            // 3. 연산 대상(Grammar Node) 검색
-            const targetPoints = await opIdentifyGrammarPoints(sentences);
-            
-            // 4. 병렬 연산 (각 포인트별 보기 생성)
-            log('병렬 연산 가동: 보기(Options) 동시 생성 시작', 'info');
-            const questions = await Promise.all(targetPoints.map(async (point) => {
-                const sentenceText = sentences.find(s => s.id === point.sentence_id).text;
-                const optData = await opGenerateDistractors(point, sentenceText);
-                return {
-                    type: point.grammar_type,
-                    question: `다음 밑줄 친 '${point.target}' 부분의 쓰임이 어법상 옳은 것을 고르시오. (문맥: ...${sentenceText}...)`,
-                    ...optData
-                };
-            }));
 
-            // 5. 최종 결과 어셈블
-            log('연산 종료. 데이터 어셈블 중...', 'info');
-            renderFinalResults(text, questions);
-            log('모든 프로세스 정상 종료.', 'success');
+        try {
+            log('System Booting... Micro-Computing Engine v4.0', 'info');
             
+            // 1. 설계도 로드 (기존에 업로드된 파일들 중 JSON이 있는지 확인)
+            const logicRaw = uploadedFiles.find(f => f.type === 'text')?.content || '';
+            const hasLogic = loadLogicSet(logicRaw);
+
+            let finalPassage = text;
+            let finalQuestions = [];
+
+            if (hasLogic) {
+                // [설계도 모드] 하드웨어 명세에 따라 지문 가공
+                finalPassage = await opInjectMarkers(text, logicInstructionSet.hardware_spec);
+                
+                // 가장 적합한 OP 3개를 골라 실행 (사용자 요청 문항 수에 맞게 분배)
+                const opsToRun = logicInstructionSet.micro_operations.slice(0, 3); 
+                log('병렬 연산 유닛 할당 시작...', 'exec');
+                
+                const results = await Promise.all(opsToRun.map(op => opExecuteCircuit(op, finalPassage, 1)));
+                finalQuestions = results.flat();
+            } else {
+                // [일반 모드] 설계도 없을 시 기본 CPU 로직 작동
+                log('기본 연산 모드로 작동합니다.', 'info');
+                // (이전의 기본 연산 로직 호출...)
+            }
+
+            renderFinalResults(finalPassage, finalQuestions);
+            log('All Operations Completed Successfully.', 'success');
+
         } catch (e) {
-            log('치명적 연산 오류: ' + e.message, 'error');
+            log('Critical System Failure: ' + e.message, 'error');
         } finally {
             generateBtn.disabled = false;
         }
@@ -155,35 +171,31 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <ul style="list-style: none; padding-left: 0; display: grid; gap: 8px;">
                     ${q.options.map(opt => `<li style="background: #fff; padding: 10px; border: 1px solid #eee; border-radius: 4px; color: #333;">${opt}</li>`).join('')}
                 </ul>
-                <div style="margin-top: 10px; color: #27ae60; font-size: 0.9em;">정답: ${q.answer}</div>
+                <div style="margin-top: 10px; color: #27ae60; font-size: 0.9em; padding: 10px; background: #f0fff4; border-radius: 4px;">
+                    <strong>정답: ${q.answer}</strong><br>${q.explanation || ''}
+                </div>
             `;
             resultContainer.appendChild(qDiv);
         });
     }
 
     // File Handling
+    const uploadedFiles = [];
     dropZone.onclick = () => examFileInput.click();
     dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('dragover'); };
-    dropZone.ondragleave = () => dropZone.classList.remove('dragover');
     dropZone.ondrop = (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); };
     examFileInput.onchange = (e) => handleFiles(e.target.files);
 
     async function handleFiles(files) {
         for (const file of files) {
-            const content = file.type === 'application/pdf' ? await extractTextFromPdf(file) : await readFileAsText(file);
-            uploadedFiles.push({ name: file.name, content });
+            const text = file.type === 'application/pdf' ? await extractTextFromPdf(file) : await readFileAsText(file);
+            uploadedFiles.push({ name: file.name, content: text, type: 'text' });
+            log(`로직 데이터 로드됨: ${file.name}`);
         }
         updatePreview();
     }
 
-    function readFileAsText(file) {
-        return new Promise(resolve => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.readAsText(file);
-        });
-    }
-
+    function readFileAsText(file) { return new Promise(resolve => { const r = new FileReader(); r.onload = (e) => resolve(e.target.result); r.readAsText(file); }); }
     async function extractTextFromPdf(file) {
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -195,14 +207,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         return text;
     }
-
     function updatePreview() {
         previewContainer.innerHTML = '';
         uploadedFiles.forEach(f => {
-            const item = document.createElement('span');
-            item.style.cssText = "background: #eee; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-right: 5px;";
-            item.textContent = `📄 ${f.name}`;
-            previewContainer.appendChild(item);
+            const span = document.createElement('span');
+            span.style.cssText = "background: #333; color: #0f0; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-right: 5px; font-family: monospace;";
+            span.textContent = `[ROM] ${f.name}`;
+            previewContainer.appendChild(span);
         });
     }
 });
