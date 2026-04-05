@@ -46,27 +46,11 @@
                     <input type="number" id="predict-count" min="1" max="10" value="3" style="width: 50px; padding: 5px;">
                 </div>
                 
-                <button id="generate-btn" class="action-btn" style="width: 100%; margin-top: 15px; font-size: 1.1em;">🚀 공장 가동 (문제 생성 시작)</button>
+                <button id="generate-btn" class="action-btn" style="width: 100%; margin-top: 15px; font-size: 1.1em;">⚙️ 연산 회로 가동 (Compute)</button>
                 
-                <!-- 공정 현황판 (추가된 부분) -->
-                <div id="factory-status" class="factory-status" style="display: none; margin-top: 20px; text-align: left; padding: 15px; background: #fff; border-radius: 8px; border: 1px solid #ddd;">
-                    <h4 style="margin-top: 0; color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 5px;">🏭 공정 현황 (AI Factory)</h4>
-                    <div class="step-item" id="step-1">
-                        <span class="step-icon">⚪</span> 1단계: 유형 분석 (Analyzer)
-                        <div class="step-detail" id="detail-1">대기 중...</div>
-                    </div>
-                    <div class="step-item" id="step-2">
-                        <span class="step-icon">⚪</span> 2단계: 지문 설계 (Annotator)
-                        <div class="step-detail" id="detail-2">대기 중...</div>
-                    </div>
-                    <div class="step-item" id="step-3">
-                        <span class="step-icon">⚪</span> 3단계: 문제 집필 (Creator)
-                        <div class="step-detail" id="detail-3">대기 중...</div>
-                    </div>
-                    <div class="step-item" id="step-4">
-                        <span class="step-icon">⚪</span> 4단계: 품질 검수 (Inspector)
-                        <div class="step-detail" id="detail-4">대기 중...</div>
-                    </div>
+                <!-- 미세 연산 로그판 -->
+                <div id="factory-status" class="factory-status" style="display: none; margin-top: 20px; text-align: left; padding: 15px; background: #000; color: #0f0; font-family: 'Courier New', monospace; font-size: 0.85em; border-radius: 4px; max-height: 250px; overflow-y: auto;">
+                    <div id="compute-log"></div>
                 </div>
             </div>
         </div>

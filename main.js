@@ -1,14 +1,12 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('AI Exam Factory v3.0 initialized');
+    console.log('Micro-Computing Exam Engine initialized');
 
     const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
     const MODEL_NAME = 'llama-3.3-70b-versatile';
     const VISION_MODEL = 'llama-3.2-11b-vision-preview';
 
-    // PDF.js Worker setup
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    // UI Elements
     const readingMaterial = document.getElementById('reading-material');
     const dropZone = document.getElementById('drop-zone');
     const examFileInput = document.getElementById('exam-file-input');
@@ -17,31 +15,151 @@ document.addEventListener('DOMContentLoaded', async () => {
     const resultContainer = document.getElementById('generated-questions');
     const apiKeyInput = document.getElementById('api-key-input');
     const saveKeyBtn = document.getElementById('save-key-btn');
-    const themeToggle = document.getElementById('theme-toggle');
+    const computeLog = document.getElementById('compute-log');
     const factoryStatus = document.getElementById('factory-status');
 
-    let questionTemplates = [];
     let uploadedFiles = [];
     let currentApiKey = localStorage.getItem('groq_api_key') || '';
     apiKeyInput.value = currentApiKey;
 
-    // Load Template Bank
-    try {
-        const resp = await fetch('questions.json');
-        questionTemplates = await resp.json();
-    } catch (e) { console.error('Failed to load templates', e); }
-
     saveKeyBtn.onclick = () => {
         currentApiKey = apiKeyInput.value.trim();
         localStorage.setItem('groq_api_key', currentApiKey);
-        alert('API 키가 저장되었습니다.');
+        alert('API 키 저장됨');
     };
 
-    if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark-mode');
-    themeToggle.onclick = () => {
-        document.body.classList.toggle('dark-mode');
-        localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+    // --- MICRO-LOG SYSTEM ---
+    function log(msg, type = 'info') {
+        const div = document.createElement('div');
+        const timestamp = new Date().toLocaleTimeString();
+        let prefix = '[INFO]';
+        if (type === 'exec') { prefix = '<span style="color: #f1c40f;">[EXEC]</span>'; div.style.color = '#f1c40f'; }
+        if (type === 'success') { prefix = '<span style="color: #2ecc71;">[OK  ]</span>'; div.style.color = '#2ecc71'; }
+        if (type === 'error') { prefix = '<span style="color: #e74c3c;">[ERR ]</span>'; div.style.color = '#e74c3c'; }
+        
+        div.innerHTML = `${prefix} ${timestamp} - ${msg}`;
+        computeLog.appendChild(div);
+        factoryStatus.scrollTop = factoryStatus.scrollHeight;
+    }
+
+    // --- ATOMIC AI OPERATIONS ---
+    async function callAI(prompt, isJson = false) {
+        const resp = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: MODEL_NAME,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.1,
+                response_format: isJson ? { type: "json_object" } : undefined
+            })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error?.message);
+        return data.choices[0].message.content;
+    }
+
+    // 1. 유형 특징 추출 (Atomic)
+    async function opExtractStylePatterns() {
+        log('연산 시작: 스타일 패턴 추출...', 'exec');
+        const samples = uploadedFiles.map(f => f.content).join('\n');
+        if (!samples) return "일반적인 5지선다 객관식";
+        const res = await callAI(`다음 텍스트에서 사용된 문제 번호 형식, 기호([A], ❶ 등), 보기 형식을 아주 짧게 리스트업 하세요:\n${samples}`);
+        log('스타일 패턴 추출 완료', 'success');
+        return res;
+    }
+
+    // 2. 문장 토큰화 (Micro)
+    async function opTokenizeSentences(text) {
+        log('연산 시작: 지문 토큰화 및 구조 분석...', 'exec');
+        const res = await callAI(`다음 지문을 문장 단위로 나누고 각 문장에 ID를 부여하세요(S1, S2...). 결과는 JSON으로:\n{ "sentences": [{ "id": "S1", "text": "..." }] }\n\n지문:\n${text}`, true);
+        log('토큰화 완료', 'success');
+        return JSON.parse(res).sentences;
+    }
+
+    // 3. 문법 포인트 검색 (Micro)
+    async function opIdentifyGrammarPoints(sentences) {
+        log('연산 시작: 문법적 포인트(Grammar Node) 검색...', 'exec');
+        const res = await callAI(`다음 문장들에서 중학교 내신에 나올만한 문법 요소(관계대명사, 분사, 수동태 등)가 포함된 문장을 3개 골라 JSON으로 반환하세요:\n{ "points": [{ "sentence_id": "S1", "target": "단어/구", "grammar_type": "유형" }] }\n\n대상:\n${JSON.stringify(sentences)}`, true);
+        log('문법 포인트 식별 완료', 'success');
+        return JSON.parse(res).points;
+    }
+
+    // 4. 개별 오답 생성 연산 (Atomic)
+    async function opGenerateDistractors(point, originalSentence) {
+        log(`연산 시작: [${point.sentence_id}] 오답(Distractors) 생성...`, 'exec');
+        const res = await callAI(`다음 문장에서 '${point.target}' 부분을 변형하여 문법적으로 틀린 보기 4개를 만드세요. 원래 부분은 1번으로 하고 총 5개를 만드세요.\n{ "options": ["①...", "②...", "③...", "④...", "⑤..."], "answer": "①" }\n\n문장: ${originalSentence}\n대상: ${point.target}`, true);
+        log(`[${point.sentence_id}] 오답 생성 완료`, 'success');
+        return JSON.parse(res);
+    }
+
+    // --- MAIN PIPELINE (ORCHESTRATOR) ---
+    generateBtn.onclick = async () => {
+        const text = readingMaterial.value.trim();
+        if (!text) return alert('지문을 입력하세요.');
+        if (!currentApiKey) return alert('API 키가 필요합니다.');
+
+        generateBtn.disabled = true;
+        factoryStatus.style.display = 'block';
+        computeLog.innerHTML = '';
+        resultContainer.innerHTML = '';
+        
+        try {
+            log('CPU 시스템 부팅 중...', 'info');
+            
+            // 1. 스타일 패턴 레지스터 로드
+            const stylePatterns = await opExtractStylePatterns();
+            
+            // 2. 본문 메모리 할당 (토큰화)
+            const sentences = await opTokenizeSentences(text);
+            
+            // 3. 연산 대상(Grammar Node) 검색
+            const targetPoints = await opIdentifyGrammarPoints(sentences);
+            
+            // 4. 병렬 연산 (각 포인트별 보기 생성)
+            log('병렬 연산 가동: 보기(Options) 동시 생성 시작', 'info');
+            const questions = await Promise.all(targetPoints.map(async (point) => {
+                const sentenceText = sentences.find(s => s.id === point.sentence_id).text;
+                const optData = await opGenerateDistractors(point, sentenceText);
+                return {
+                    type: point.grammar_type,
+                    question: `다음 밑줄 친 '${point.target}' 부분의 쓰임이 어법상 옳은 것을 고르시오. (문맥: ...${sentenceText}...)`,
+                    ...optData
+                };
+            }));
+
+            // 5. 최종 결과 어셈블
+            log('연산 종료. 데이터 어셈블 중...', 'info');
+            renderFinalResults(text, questions);
+            log('모든 프로세스 정상 종료.', 'success');
+            
+        } catch (e) {
+            log('치명적 연산 오류: ' + e.message, 'error');
+        } finally {
+            generateBtn.disabled = false;
+        }
     };
+
+    function renderFinalResults(passage, questions) {
+        const pBox = document.createElement('div');
+        pBox.style.cssText = "padding: 20px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 25px; white-space: pre-wrap; line-height: 1.8; color: #000; text-align: left;";
+        pBox.textContent = passage;
+        resultContainer.appendChild(pBox);
+
+        questions.forEach((q, i) => {
+            const qDiv = document.createElement('div');
+            qDiv.className = 'question-item';
+            qDiv.style.textAlign = 'left';
+            qDiv.innerHTML = `
+                <div style="font-weight: bold; margin-bottom: 12px; font-size: 1.1em; color: #000;">${i + 1}. [${q.type}] ${q.question}</div>
+                <ul style="list-style: none; padding-left: 0; display: grid; gap: 8px;">
+                    ${q.options.map(opt => `<li style="background: #fff; padding: 10px; border: 1px solid #eee; border-radius: 4px; color: #333;">${opt}</li>`).join('')}
+                </ul>
+                <div style="margin-top: 10px; color: #27ae60; font-size: 0.9em;">정답: ${q.answer}</div>
+            `;
+            resultContainer.appendChild(qDiv);
+        });
+    }
 
     // File Handling
     dropZone.onclick = () => examFileInput.click();
@@ -52,240 +170,39 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function handleFiles(files) {
         for (const file of files) {
-            if (file.type.startsWith('image/')) {
-                const dataUrl = await readFileAsDataURL(file);
-                uploadedFiles.push({ type: 'image', content: dataUrl, name: file.name });
-            } else if (file.type === 'application/pdf') {
-                const text = await extractTextFromPdf(file);
-                uploadedFiles.push({ type: 'text', content: text, name: file.name });
-            }
+            const content = file.type === 'application/pdf' ? await extractTextFromPdf(file) : await readFileAsText(file);
+            uploadedFiles.push({ name: file.name, content });
         }
         updatePreview();
     }
 
-    function readFileAsDataURL(file) {
+    function readFileAsText(file) {
         return new Promise(resolve => {
             const reader = new FileReader();
             reader.onload = (e) => resolve(e.target.result);
-            reader.readAsDataURL(file);
+            reader.readAsText(file);
         });
     }
 
     async function extractTextFromPdf(file) {
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        let fullText = '';
+        let text = '';
         for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
             const content = await page.getTextContent();
-            fullText += content.items.map(item => item.str).join(' ') + '\n';
+            text += content.items.map(item => item.str).join(' ') + '\n';
         }
-        return fullText;
+        return text;
     }
 
     function updatePreview() {
         previewContainer.innerHTML = '';
-        uploadedFiles.forEach((file, index) => {
-            const item = document.createElement('div');
-            item.className = 'file-item';
-            item.style.cssText = "width: 100px; height: 30px; background: #eee; font-size: 10px; padding: 5px; border-radius: 4px; overflow: hidden; position: relative;";
-            item.innerHTML = `📄 ${file.name.substring(0, 10)}... <button class="remove-btn" style="position:absolute; right:2px; top:2px;">×</button>`;
-            item.querySelector('.remove-btn').onclick = (e) => {
-                e.stopPropagation();
-                uploadedFiles.splice(index, 1);
-                updatePreview();
-            };
+        uploadedFiles.forEach(f => {
+            const item = document.createElement('span');
+            item.style.cssText = "background: #eee; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-right: 5px;";
+            item.textContent = `📄 ${f.name}`;
             previewContainer.appendChild(item);
         });
     }
-
-    // --- AI FACTORY AGENTS ---
-
-    function updateStepUI(step, status, detail = null) {
-        const item = document.getElementById(`step-${step}`);
-        const icon = item.querySelector('.step-icon');
-        const detailDiv = document.getElementById(`detail-${step}`);
-        
-        item.className = 'step-item ' + status;
-        if (status === 'active') icon.textContent = '🔵';
-        else if (status === 'complete') icon.textContent = '✅';
-        else icon.textContent = '⚪';
-
-        if (detail) detailDiv.textContent = detail;
-    }
-
-    async function callAI(messages, responseFormat = null, isVision = false) {
-        const resp = await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: isVision ? VISION_MODEL : MODEL_NAME,
-                messages: messages,
-                temperature: 0.3,
-                response_format: responseFormat ? { type: responseFormat } : undefined
-            })
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error?.message || 'AI 호출 실패');
-        return data.choices[0].message.content;
-    }
-
-    // [공정 1] 유형 분석가
-    async function agentAnalyzeStyle() {
-        updateStepUI(1, 'active', '기출문제를 분석하여 출제 경향을 파악 중...');
-        
-        const samples = uploadedFiles.map(f => f.type === 'text' ? f.content : f.content).join('\n\n');
-        const images = uploadedFiles.filter(f => f.type === 'image').map(f => f.content);
-        
-        const prompt = `당신은 영어 시험 분석 전문가입니다. 제공된 기출자료를 보고 다음을 리스트로 뽑으세요:
-        1. 주요 문제 유형 (예: 빈칸 추론, 순서 배열)
-        2. 지문 내 특수 기호 스타일 (예: [A], (a), ❶)
-        간결하게 핵심만 나열하세요.`;
-
-        const content = [{ type: 'text', text: prompt }];
-        if (samples) content.push({ type: 'text', text: `기출 텍스트:\n${samples}` });
-        images.forEach(img => content.push({ type: 'image_url', image_url: { url: img } }));
-
-        const result = await callAI([{ role: 'user', content }], null, images.length > 0);
-        updateStepUI(1, 'complete', '분석 완료: ' + result.substring(0, 50) + '...');
-        return result;
-    }
-
-    // [공정 2] 지문 설계자
-    async function agentAnnotatePassage(passage, styleGuide) {
-        updateStepUI(2, 'active', '본문에 기호 및 장치를 배치 중...');
-        
-        const prompt = `본문을 분석된 스타일에 맞춰 변형하세요. 
-        내용은 유지하되, 문제 출제를 위해 [A], (a), ❶ 같은 기호를 문맥에 맞는 위치에 삽입하세요.
-        
-        [스타일 가이드]
-        ${styleGuide}
-        
-        본문:
-        ${passage}`;
-
-        const result = await callAI([{ role: 'user', content: prompt }]);
-        updateStepUI(2, 'complete', '지문 설계 완료 (기호 삽입됨)');
-        return result;
-    }
-
-    // [공정 3] 문제 집필가
-    async function agentCreateQuestions(annotatedPassage, styleGuide, level, count) {
-        updateStepUI(3, 'active', '템플릿을 기반으로 문제를 출제 중...');
-        
-        const templateInfo = questionTemplates.slice(0, 5).map(t => `- ${t.type}: ${t.question}`).join('\n');
-        
-        const systemPrompt = `당신은 전문 출제 위원입니다. JSON 형식으로만 응답하세요.
-        난이도: ${level}, 문항수: ${count}
-        
-        [가이드] ${styleGuide}
-        [참고 템플릿]
-        ${templateInfo}
-        
-        출력 JSON 구조:
-        { "questions": [ { "type": "유형", "question": "질문", "options": ["①", "②", "③", "④", "⑤"], "answer": "정답", "explanation": "해설" } ] }`;
-
-        const result = await callAI([
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `설계된 지문:\n${annotatedPassage}` }
-        ], 'json_object');
-
-        updateStepUI(3, 'complete', `${count}문항 집필 완료`);
-        return JSON.parse(result);
-    }
-
-    // [공정 4] 품질 검수자
-    async function agentInspectQuestions(passage, rawData) {
-        updateStepUI(4, 'active', '문제의 논리적 오류를 검수 중...');
-        
-        const prompt = `다음 영어 문제들의 정답이 지문에서 명확히 도출되는지 검수하고, 필요시 더 정교하게 수정하세요.
-        JSON 형식으로 최종 결과만 반환하세요.
-        
-        지문: ${passage}
-        문제데이터: ${JSON.stringify(rawData)}`;
-
-        const result = await callAI([
-            { role: 'user', content: prompt }
-        ], 'json_object');
-
-        updateStepUI(4, 'complete', '최종 검수 및 품질 보증 완료');
-        return JSON.parse(result);
-    }
-
-    // --- 메인 공정 가동 ---
-    generateBtn.onclick = async () => {
-        const text = readingMaterial.value.trim();
-        if (!text) return alert('지문을 입력하세요.');
-        if (!currentApiKey) return alert('API 키를 설정하세요.');
-
-        generateBtn.disabled = true;
-        factoryStatus.style.display = 'block';
-        [1,2,3,4].forEach(i => updateStepUI(i, 'idle', '대기 중...'));
-
-        try {
-            // Step 1: Analyze
-            const styleGuide = uploadedFiles.length > 0 
-                ? await agentAnalyzeStyle() 
-                : "일반적인 수능/내신 유형 (빈칸, 주제, 어법)";
-
-            // Step 2: Annotate
-            const annotatedPassage = await agentAnnotatePassage(text, styleGuide);
-
-            // Step 3: Create
-            const level = document.getElementById('predict-level').value;
-            const count = document.getElementById('predict-count').value;
-            const rawQuestions = await agentCreateQuestions(annotatedPassage, styleGuide, level, count);
-
-            // Step 4: Inspect
-            const finalData = await agentInspectQuestions(annotatedPassage, rawQuestions);
-
-            renderResults({ passage: annotatedPassage, questions: finalData.questions });
-        } catch (e) {
-            alert('공정 오류: ' + e.message);
-        } finally {
-            generateBtn.disabled = false;
-        }
-    };
-
-    function renderResults(data) {
-        resultContainer.innerHTML = '';
-        const pBox = document.createElement('div');
-        pBox.style.cssText = "padding: 20px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 25px; white-space: pre-wrap; line-height: 1.8; font-size: 1.1em; color: #000; text-align: left;";
-        pBox.textContent = data.passage;
-        resultContainer.appendChild(pBox);
-
-        data.questions.forEach((q, i) => {
-            const qDiv = document.createElement('div');
-            qDiv.className = 'question-item';
-            qDiv.style.textAlign = 'left';
-            qDiv.innerHTML = `
-                <div style="font-weight: bold; margin-bottom: 12px; font-size: 1.1em; color: #000;">${i + 1}. [${q.type}] ${q.question}</div>
-                <ul class="options-list" style="list-style: none; padding-left: 0; display: grid; gap: 8px;">
-                    ${q.options.map(opt => `<li style="background: #fff; padding: 10px; border: 1px solid #eee; border-radius: 4px; color: #333;">${opt}</li>`).join('')}
-                </ul>
-                <details style="margin-top: 15px; color: #27ae60; background: #f0fff4; padding: 10px; border-radius: 6px;">
-                    <summary style="cursor: pointer; font-weight: bold;">정답 및 해설 보기</summary>
-                    <div style="margin-top: 10px;">
-                        <p><strong>정답: ${q.answer}</strong></p>
-                        <p style="font-size: 0.9em; line-height: 1.5;">${q.explanation}</p>
-                    </div>
-                </details>
-            `;
-            resultContainer.appendChild(qDiv);
-        });
-        resultContainer.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    // PDF Export
-    document.getElementById('export-pdf').onclick = async () => {
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF();
-        const content = document.getElementById('result-container');
-        const canvas = await html2canvas(content, { scale: 2 });
-        const imgData = canvas.toDataURL('image/png');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save('exam_pro.pdf');
-    };
 });
