@@ -93,15 +93,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function antArchitect(passage, analysis, dnaMatch) {
         log('설계 개미(Architect) 가동...', 'exec');
-        const system = "너는 문제 설계 전문가야.";
-        const user = `유형: ${dnaMatch.type}\n분석: ${JSON.stringify(analysis)}\n\nJSON 응답: { "correct_logic": "...", "trap_logic": "...", "target_sentence": "..." }`;
+        const system = "너는 문제 설계 전문가야. 반드시 제공된 지문 내의 문장을 정확하게 추출해서 target_sentence에 넣어야 해.";
+        const user = `지문: ${passage}\n유형: ${dnaMatch.type}\n분석: ${JSON.stringify(analysis)}\n\nJSON 응답: { "correct_logic": "...", "trap_logic": "...", "target_sentence": "지문에서 변형할 대상 문장을 그대로 복사해서 여기에 넣으세요." }`;
         return JSON.parse(await callGroq(system, user, true));
     }
 
     // [LINK] Architect -> Modifier 연결 검증
     async function inspectLinkDesignToModifier(passage, design) {
         log('감시 개미(Linker): 설계도가 지문에 적용 가능한지 체크 중...', 'link');
-        if (!passage.includes(design.target_sentence.substring(0, 10))) {
+        const target = (design.target_sentence || "").trim();
+        if (!target || !passage.includes(target.substring(0, 10))) {
             log('경고: 설계된 문장이 지문에 존재하지 않습니다. 재보정 요청.', 'error');
             return false;
         }
