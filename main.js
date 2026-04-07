@@ -1,37 +1,49 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Logical Circuit Exam Engine v4.0 initialized');
+    console.log('Gemma 4 Ant Colony Exam Engine v5.1 (Google API) initialized');
 
-    const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-    const MODEL_NAME = 'llama-3.3-70b-versatile';
+    // --- CONFIGURATION ---
+    // Gemma 4 사용을 위해 Google AI Studio 엔드포인트를 사용합니다.
+    const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/'; 
+    const MODEL_NAME = 'gemini-1.5-pro'; // 실제 Gemma 4 출시 모델명으로 변경 가능 (예: 'gemma-4-it')
+    
+    let currentApiKey = localStorage.getItem('gemma_api_key') || '';
+    let questionDatabase = [];
 
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
+    // --- UI ELEMENTS ---
     const readingMaterial = document.getElementById('reading-material');
-    const dropZone = document.getElementById('drop-zone');
-    const examFileInput = document.getElementById('exam-file-input');
     const generateBtn = document.getElementById('generate-btn');
     const resultContainer = document.getElementById('generated-questions');
     const apiKeyInput = document.getElementById('api-key-input');
     const saveKeyBtn = document.getElementById('save-key-btn');
     const computeLog = document.getElementById('compute-log');
     const factoryStatus = document.getElementById('factory-status');
-    const logicJsonInput = document.getElementById('logic-json-input');
+    const predictCount = document.getElementById('predict-count');
 
-    let logicInstructionSet = null; 
-    let currentApiKey = localStorage.getItem('groq_api_key') || '';
     apiKeyInput.value = currentApiKey;
+
+    // --- INITIALIZATION ---
+    async function init() {
+        try {
+            const resp = await fetch('questions.json');
+            questionDatabase = await resp.json();
+            log(`유전형질 데이터베이스 로드 완료: ${questionDatabase.length}개의 예시 보유`, 'success');
+        } catch (e) {
+            log('데이터베이스 로드 실패.', 'error');
+        }
+    }
+    init();
 
     saveKeyBtn.onclick = () => {
         currentApiKey = apiKeyInput.value.trim();
-        localStorage.setItem('groq_api_key', currentApiKey);
-        alert('API 키 저장됨');
+        localStorage.setItem('gemma_api_key', currentApiKey);
+        alert('Gemma API Key (Google AI Studio) Saved');
     };
 
     function log(msg, type = 'info') {
         const div = document.createElement('div');
         const timestamp = new Date().toLocaleTimeString();
         let prefix = '[INFO]';
-        if (type === 'exec') { prefix = '<span style="color: #f1c40f;">[EXEC]</span>'; div.style.color = '#f1c40f'; }
+        if (type === 'exec') { prefix = '<span style="color: #f1c40f;">[ANT ]</span>'; div.style.color = '#f1c40f'; }
         if (type === 'success') { prefix = '<span style="color: #2ecc71;">[OK  ]</span>'; div.style.color = '#2ecc71'; }
         if (type === 'error') { prefix = '<span style="color: #e74c3c;">[ERR ]</span>'; div.style.color = '#e74c3c'; }
         div.innerHTML = `${prefix} ${timestamp} - ${msg}`;
@@ -39,91 +51,108 @@ document.addEventListener('DOMContentLoaded', async () => {
         factoryStatus.scrollTop = factoryStatus.scrollHeight;
     }
 
-    async function callAI(messages, isJson = false) {
-        const resp = await fetch(API_URL, {
+    async function callGemma(systemInstruction, userPrompt, isJson = false) {
+        // Google Gemini API 규격 (Gemma 4 지원용)
+        const fullUrl = `${API_URL}${MODEL_NAME}:generateContent?key=${currentApiKey}`;
+        
+        const requestBody = {
+            contents: [{ parts: [{ text: userPrompt }] }],
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            generationConfig: {
+                temperature: 0.4,
+                responseMimeType: isJson ? "application/json" : "text/plain"
+            }
+        };
+
+        const resp = await fetch(fullUrl, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: MODEL_NAME,
-                messages: messages,
-                temperature: 0.1,
-                response_format: isJson ? { type: "json_object" } : undefined
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
         });
+        
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error?.message);
-        return data.choices[0].message.content;
-    }
-
-    // --- ATOMIC OPERATIONS ---
-
-    async function opFilterLanguage(text) {
-        log('연산 시작: 언어 필터링 (영어 본문 정밀 추출)...', 'exec');
-        const prompt = `다음 텍스트에서 시험 문제가 출제될 '영어 본문'만 추출하여 반환하세요. 한글은 모두 제거하십시오:\n\n${text}`;
-        const res = await callAI([{ role: 'user', content: prompt }]);
-        log('언어 필터링 완료', 'success');
-        return res;
-    }
-
-    function loadLogicSet(rawInput) {
-        try {
-            if (!rawInput.trim()) return false;
-            const parsed = JSON.parse(rawInput);
-            if (parsed.micro_operations) {
-                logicInstructionSet = parsed;
-                log(`로직 설계도 로드 완료: ${parsed.micro_operations.length}개의 연산 회로 대기 중`, 'success');
-                return true;
-            }
-        } catch (e) { return false; }
-        return false;
-    }
-
-    async function opInjectMarkers(passage, spec) {
-        log('연산 시작: Physical Marker Layer 주입...', 'exec');
-        const prompt = `다음 지문에 규칙(${spec.marker_placement_rule})에 따라 기호(${spec.passage_markers.join(',')})를 주입하세요:\n\n${passage}`;
-        const res = await callAI([{ role: 'user', content: prompt }]);
-        log('마커 주입 완료', 'success');
-        return res;
-    }
-
-    async function opExecuteCircuit(op, passage, count) {
-        log(`회로 가동: [${op.op_id}] ${op.type} 연산 중...`, 'exec');
-        const systemPrompt = `당신은 영어 문제 생성 회로입니다. 다음 명세에 따라 문제를 생성하고 반드시 아래의 JSON 형식으로만 응답하세요.
+        if (!resp.ok) throw new Error(data.error?.message || 'API 호출 실패');
         
-        형식: { "questions": [ { "type": "...", "question": "...", "options": ["①", "②", "③", "④", "⑤"], "answer": "...", "explanation": "..." } ] }
-        
-        [SCANNING] ${op.scanning_logic}
-        [TRANSFORM] ${JSON.stringify(op.transformation_rules)}
-        [ASSEMBLY] ${JSON.stringify(op.option_assembly)}`;
+        return data.candidates[0].content.parts[0].text;
+    }
 
-        try {
-            const res = await callAI([
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: `본문:\n${passage}\n\n위 본문에서 ${count}문항을 생성하세요.` }
-            ], true);
-            
-            const data = JSON.parse(res);
-            // 데이터가 유효한지 확인 (questions 리스트가 없으면 빈 배열 반환)
-            if (data && Array.isArray(data.questions)) {
-                log(`[${op.op_id}] 연산 완료`, 'success');
-                return data.questions;
-            } else {
-                log(`[${op.op_id}] 연산 결과 데이터 규격 불일치`, 'error');
-                return [];
-            }
-        } catch (e) {
-            log(`[${op.op_id}] 연산 실패: ${e.message}`, 'error');
-            return [];
+    // --- THE ANT COLONY (AGENTS) ---
+
+    async function antDNAScout(passage) {
+        log('탐색 개미(Scout)가 DNA 데이터베이스를 뒤지는 중...', 'exec');
+        const examplesSummary = questionDatabase.slice(0, 10).map((q, i) => `ID ${i}: [${q.type}] ${q.question}`).join('\n');
+        const system = "너는 지문을 분석하여 가장 적절한 문제 유형을 선정하는 탐색 개미야. 반드시 JSON으로만 응답해.";
+        const user = `다음 지문에 가장 잘 어울리는 문제 유형 DNA를 골라줘.\n\n[지문]\n${passage}\n\n[예시 목록]\n${examplesSummary}\n\n응답 형식: { "selected_id": 숫자, "reason": "이유" }`;
+        const res = await callGemma(system, user, true);
+        const choice = JSON.parse(res);
+        return questionDatabase[choice.selected_id] || questionDatabase[0];
+    }
+
+    async function antPurifier(text) {
+        log('정제 개미(Purifier)가 불순물을 제거하는 중...', 'exec');
+        const system = "너는 텍스트에서 순수 영어 본문만 추출하는 정제 개미야. 한글은 모두 제거해.";
+        return await callGemma(system, text);
+    }
+
+    async function antArchitect(passage, dna) {
+        log('설계 개미(Architect)가 출제 포인트를 설계 중...', 'exec');
+        const system = "너는 문제 설계 개미야. 출제 포인트를 제안해. JSON으로 응답해.";
+        const user = `지문: ${passage}\n유형: ${dna.type}\n응답 형식: { "point": "설명" }`;
+        const res = await callGemma(system, user, true);
+        return JSON.parse(res);
+    }
+
+    async function antModifier(passage, design, dna) {
+        log('가공 개미(Modifier)가 지문에 빈칸/밑줄을 긋는 중...', 'exec');
+        const system = "너는 지문을 변형하는 개미야. 변형된 본문만 반환해.";
+        const user = `본문: ${passage}\n설계 포인트: ${design.point}\n유형: ${dna.type}`;
+        return await callGemma(system, user);
+    }
+
+    async function antVoice(dna) {
+        log('발성 개미(Voice)가 질문을 작성 중...', 'exec');
+        const system = "너는 질문(발문)을 작성하는 개미야.";
+        const user = `유형: ${dna.type}, 예시 질문: ${dna.question}`;
+        return await callGemma(system, user);
+    }
+
+    async function antCultivator(passage, modifiedPassage, question, dna) {
+        log('배양 개미(Cultivator)가 보기 데이터를 생성 중...', 'exec');
+        const system = "너는 보기(1정답, 4오답)를 만드는 개미야. JSON으로 응답해.";
+        const user = `본문: ${passage}\n가공지문: ${modifiedPassage}\n질문: ${question}\n응답 형식: { "answer": "정답", "distractors": ["오답1","오답2","오답3","오답4"], "explanation": "해설" }`;
+        const res = await callGemma(system, user, true);
+        return JSON.parse(res);
+    }
+
+    async function antAssembler(question, cultivatorData) {
+        log('조립 개미(Assembler)가 문제를 패키징 중...', 'exec');
+        const options = [cultivatorData.answer, ...cultivatorData.distractors];
+        for (let i = options.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [options[i], options[j]] = [options[j], options[i]];
         }
+        const marks = ['①', '②', '③', '④', '⑤'];
+        const numberedOptions = options.map((opt, i) => `${marks[i]} ${opt}`);
+        return {
+            question: question,
+            options: numberedOptions,
+            answer: marks[options.indexOf(cultivatorData.answer)],
+            explanation: cultivatorData.explanation
+        };
+    }
+
+    async function antAuditor(passage, problem) {
+        log('검수 개미(Auditor)가 최종 점검 중...', 'exec');
+        const system = "너는 무자비한 검수 개미야. 완벽하면 'PASS' 아니면 'FAIL:이유'만 말해.";
+        const user = `지문: ${passage}\n문제: ${JSON.stringify(problem)}`;
+        const res = await callGemma(system, user);
+        return res.toUpperCase().includes('PASS');
     }
 
     // --- MAIN PIPELINE ---
     generateBtn.onclick = async () => {
         const rawInput = readingMaterial.value.trim();
-        const logicPasteInput = logicJsonInput.value.trim();
-        
-        if (!rawInput) return alert('지문을 입력하세요.');
-        if (!currentApiKey) return alert('API 키가 필요합니다.');
+        if (!rawInput || !currentApiKey) return alert('지문과 Google API 키가 필요합니다.');
 
         generateBtn.disabled = true;
         factoryStatus.style.display = 'block';
@@ -131,115 +160,56 @@ document.addEventListener('DOMContentLoaded', async () => {
         resultContainer.innerHTML = '';
 
         try {
-            log('System Booting... Engine v4.0', 'info');
-            
-            let logicRaw = logicPasteInput || uploadedFiles.find(f => f.name.endsWith('.json'))?.content || '';
-            const hasLogic = loadLogicSet(logicRaw);
+            log('Ant Colony Operation Started (Gemma 4 Mode)...', 'info');
+            const cleanPassage = await antPurifier(rawInput);
+            const count = parseInt(predictCount.value) || 1;
+            const finalQuestions = [];
 
-            const cleanPassage = await opFilterLanguage(rawInput);
-            let finalPassage = cleanPassage;
-            let finalQuestions = [];
-
-            if (hasLogic) {
-                finalPassage = await opInjectMarkers(cleanPassage, logicInstructionSet.hardware_spec);
-                const count = parseInt(document.getElementById('predict-count').value) || 3;
+            for (let i = 0; i < count; i++) {
+                log(`[${i+1}번 생산라인] 개미들 투입 중...`, 'info');
+                const dna = await antDNAScout(cleanPassage);
+                const design = await antArchitect(cleanPassage, dna);
+                const modifiedPassage = await antModifier(cleanPassage, design, dna);
+                const qText = await antVoice(dna);
+                const cData = await antCultivator(cleanPassage, modifiedPassage, qText, dna);
+                const assembly = await antAssembler(qText, cData);
                 
-                // 로직에서 연산 리스트를 가져와서 개수만큼 실행
-                const opsToRun = logicInstructionSet.micro_operations.slice(0, count); 
-                log(`${opsToRun.length}개 유닛 병렬 할당 시작...`, 'exec');
-                
-                const results = await Promise.all(opsToRun.map(op => opExecuteCircuit(op, finalPassage, 1)));
-                // null이나 undefined 필터링 후 합치기
-                finalQuestions = results.filter(r => r !== null).flat();
-            } else {
-                log('기본 연산 모드로 작동합니다.', 'info');
-                const basicOp = { op_id: "BASIC", type: "기본", scanning_logic: "All", transformation_rules: [], option_assembly: { format: "①~⑤" } };
-                finalQuestions = await opExecuteCircuit(basicOp, cleanPassage, 3);
+                if (await antAuditor(cleanPassage, assembly)) {
+                    finalQuestions.push({ ...assembly, passage: modifiedPassage });
+                    log(`${i+1}번 문제 생산 성공!`, 'success');
+                } else {
+                    log(`${i+1}번 문제 검수 실패, 재가공 필요.`, 'error');
+                }
             }
-
-            if (finalQuestions.length === 0) {
-                throw new Error('생성된 문제가 없습니다. 지문이나 로직을 확인해 주세요.');
-            }
-
-            renderFinalResults(finalPassage, finalQuestions);
-            log('All Operations Completed.', 'success');
+            renderResults(finalQuestions);
         } catch (e) {
-            log('Failure: ' + e.message, 'error');
+            log('Colony Error: ' + e.message, 'error');
         } finally {
             generateBtn.disabled = false;
         }
     };
 
-    function renderFinalResults(passage, questions) {
-        const pBox = document.createElement('div');
-        pBox.style.cssText = "padding: 20px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 25px; white-space: pre-wrap; line-height: 1.8; color: #000; text-align: left;";
-        pBox.textContent = passage;
-        resultContainer.appendChild(pBox);
-
+    function renderResults(questions) {
+        if (questions.length === 0) {
+            resultContainer.innerHTML = '<p class="empty-msg">개미들이 문제를 완성하지 못했습니다. 다시 시도해 주세요.</p>';
+            return;
+        }
         questions.forEach((q, i) => {
-            // q가 존재하지 않으면 건너뜀 (방어적 코드)
-            if (!q) return;
-
             const qDiv = document.createElement('div');
             qDiv.className = 'question-item';
             qDiv.style.textAlign = 'left';
-            
-            const opts = Array.isArray(q.options) ? q.options : [];
-            
             qDiv.innerHTML = `
-                <div style="font-weight: bold; margin-bottom: 12px; font-size: 1.1em; color: #000;">${i + 1}. [${q.type || '유형미정'}] ${q.question || '질문 데이터 없음'}</div>
-                <ul style="list-style: none; padding-left: 0; display: grid; gap: 8px;">
-                    ${opts.map(opt => `<li style="background: #fff; padding: 10px; border: 1px solid #eee; border-radius: 4px; color: #333;">${opt}</li>`).join('')}
+                <div style="background:#f9f9f9; padding:20px; border:1px solid #ddd; border-radius:8px; margin-bottom:15px; white-space:pre-wrap;">${q.passage}</div>
+                <div style="font-weight:bold; margin-bottom:12px;">${i + 1}. ${q.question}</div>
+                <ul style="list-style:none; padding:0; margin-bottom:15px;">
+                    ${q.options.map(opt => `<li style="padding:8px; background:#fff; border:1px solid #eee; margin-bottom:5px; border-radius:4px;">${opt}</li>`).join('')}
                 </ul>
-                <div style="margin-top: 10px; color: #27ae60; font-size: 0.9em; padding: 10px; background: #f0fff4; border-radius: 4px;">
-                    <strong>정답: ${q.answer || '미지정'}</strong><br>${q.explanation || ''}
+                <div style="color:#27ae60; font-weight:bold; background:#f0fff4; padding:10px; border-radius:4px;">
+                    정답: ${q.answer} <br>
+                    <span style="font-weight:normal; font-size:0.9em; color:#666;">해설: ${q.explanation}</span>
                 </div>
             `;
             resultContainer.appendChild(qDiv);
-        });
-    }
-
-    // File Handling
-    const uploadedFiles = [];
-    dropZone.onclick = () => examFileInput.click();
-    dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('dragover'); };
-    dropZone.ondrop = (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); };
-    examFileInput.onchange = (e) => handleFiles(e.target.files);
-
-    async function handleFiles(files) {
-        for (const file of files) {
-            try {
-                const text = file.type === 'application/pdf' ? await extractTextFromPdf(file) : await readFileAsText(file);
-                uploadedFiles.push({ name: file.name, content: text });
-                log(`데이터 로드됨: ${file.name}`);
-                if (file.name.endsWith('.json')) {
-                    logicJsonInput.value = text;
-                    log('JSON 설계도가 입력창에 자동 로드되었습니다.', 'success');
-                }
-            } catch (e) { log(`파일 로드 실패: ${file.name}`, 'error'); }
-        }
-        updatePreview();
-    }
-
-    function readFileAsText(file) { return new Promise(resolve => { const r = new FileReader(); r.onload = (e) => resolve(e.target.result); r.readAsText(file); }); }
-    async function extractTextFromPdf(file) {
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        let text = '';
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const content = await page.getTextContent();
-            text += content.items.map(item => item.str).join(' ') + '\n';
-        }
-        return text;
-    }
-    function updatePreview() {
-        previewContainer.innerHTML = '';
-        uploadedFiles.forEach(f => {
-            const span = document.createElement('span');
-            span.style.cssText = "background: #333; color: #0f0; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-right: 5px; font-family: monospace;";
-            span.textContent = `[ROM] ${f.name}`;
-            previewContainer.appendChild(span);
         });
     }
 });
