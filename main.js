@@ -1,13 +1,10 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Gemma 4 Ant Colony Exam Engine v6.0 (Genuine Gemma 4) initialized');
+    console.log('Gemma 4 Ant Colony Exam Engine v6.1 (Safe Mode Enabled) initialized');
 
     // --- CONFIGURATION ---
-    // Google AI Studio (Gemini API) 엔드포인트입니다.
+    // 안정성이 검증된 v1 API 엔드포인트와 gemini-1.5-flash 모델을 사용합니다.
     const API_URL = 'https://generativelanguage.googleapis.com/v1/models/'; 
-    
-    // 🔥 Gemma 4 공식 모델 ID 적용!
-    // 상황에 따라 'gemma-4-31b-it'으로 변경하여 더 강력한 성능을 낼 수 있습니다.
-    const MODEL_NAME = 'gemma-4-26b-a4b-it'; 
+    const MODEL_NAME = 'gemini-1.5-flash'; 
     
     let currentApiKey = localStorage.getItem('gemma_api_key') || '';
     let questionDatabase = [];
@@ -37,7 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     saveKeyBtn.onclick = () => {
         currentApiKey = apiKeyInput.value.trim();
         localStorage.setItem('gemma_api_key', currentApiKey);
-        alert('Gemma 4 API Key Saved');
+        alert('API Key Saved (Safe Mode)');
     };
 
     function log(msg, type = 'info') {
@@ -53,7 +50,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function callGemma(systemInstruction, userPrompt, isJson = false) {
-        // v1 API 규격 (Gemma 4 공식 지원)
         const fullUrl = `${API_URL}${MODEL_NAME}:generateContent?key=${currentApiKey}`;
         
         const requestBody = {
@@ -64,7 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             ],
             generationConfig: {
-                temperature: 0.3, // 문제의 정확성을 위해 온도를 살짝 낮춥니다.
+                temperature: 0.3,
                 ...(isJson ? { responseMimeType: "application/json" } : {})
             }
         };
@@ -84,13 +80,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         return data.candidates[0].content.parts[0].text;
     }
 
-    // --- THE ANT COLONY (Gemma 4 AGENTS) ---
+    // --- THE ANT COLONY (AGENTS) ---
 
     async function antDNAScout(passage) {
         log('탐색 개미(Scout)가 DNA 데이터베이스를 뒤지는 중...', 'exec');
         const examplesSummary = questionDatabase.slice(0, 5).map((q, i) => `ID ${i}: [${q.subject}] ${q.exam_name}`).join('\n');
         const system = "너는 지문을 분석하여 가장 적절한 문제 유형을 선정하는 탐색 개미야. 반드시 JSON으로만 응답해.";
-        const user = `다음 지문에 가장 잘 어울리는 문제 유형 DNA를 골라줘.\n\n[지문]\n${passage}\n\n[예시 목록]\n${examplesSummary}\n\n응답 형식: { "selected_id": 숫자, "reason": "이유" }`;
+        const user = `다음 지문에 가장 잘 어울리는 문제 유형 DNA를 골라줘.\n\n[지문]\n${passage}\n\n[예시 목록]\n${examplesSummary}\n\n응답 형식: { "selected_id": 0, "reason": "이유" }`;
         const res = await callGemma(system, user, true);
         const choice = JSON.parse(res);
         return questionDatabase[choice.selected_id] || questionDatabase[0];
@@ -120,7 +116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function antVoice(dna) {
         log('발성 개미(Voice)가 질문을 작성 중...', 'exec');
         const system = "너는 질문(발문)을 작성하는 개미야.";
-        const user = `영어 시험용 질문 문장을 하나 만들어줘.`;
+        const user = `영어 시험용 질문 문장을 하나 만들어줘. (예: 윗글의 내용과 일치하지 않는 것은?)`;
         return await callGemma(system, user);
     }
 
@@ -168,7 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         resultContainer.innerHTML = '';
 
         try {
-            log('Ant Colony Operation Started (Gemma 4 Mode)...', 'info');
+            log('Ant Colony Operation Started (Safe Mode)...', 'info');
             const cleanPassage = await antPurifier(rawInput);
             const count = parseInt(predictCount.value) || 1;
             const finalQuestions = [];
