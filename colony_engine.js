@@ -1,10 +1,11 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Gemma 4 Ant Colony Exam Engine v6.1 (Safe Mode Enabled) initialized');
+    console.log('Gemma 4 Ant Colony Exam Engine v6.2 (Stabilized) initialized');
 
     // --- CONFIGURATION ---
-    // 안정성이 검증된 v1 API 엔드포인트와 gemini-1.5-flash 모델을 사용합니다.
-    const API_URL = 'https://generativelanguage.googleapis.com/v1/models/'; 
-    const MODEL_NAME = 'gemini-1.5-flash'; 
+    // 구글 API의 모델 경로 형식을 더욱 명확히 합니다.
+    const API_BASE = 'https://generativelanguage.googleapis.com/v1'; 
+    // 가장 가용성이 높은 모델명을 사용합니다.
+    const MODEL_NAME = 'models/gemini-1.5-flash'; 
     
     let currentApiKey = localStorage.getItem('gemma_api_key') || '';
     let questionDatabase = [];
@@ -34,7 +35,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     saveKeyBtn.onclick = () => {
         currentApiKey = apiKeyInput.value.trim();
         localStorage.setItem('gemma_api_key', currentApiKey);
-        alert('API Key Saved (Safe Mode)');
+        alert('API Key Saved');
     };
 
     function log(msg, type = 'info') {
@@ -50,7 +51,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function callGemma(systemInstruction, userPrompt, isJson = false) {
-        const fullUrl = `${API_URL}${MODEL_NAME}:generateContent?key=${currentApiKey}`;
+        // v1 정식 규격: {BASE_URL}/{MODEL_NAME}:generateContent?key={KEY}
+        const fullUrl = `${API_BASE}/${MODEL_NAME}:generateContent?key=${currentApiKey}`;
         
         const requestBody = {
             contents: [
@@ -84,9 +86,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function antDNAScout(passage) {
         log('탐색 개미(Scout)가 DNA 데이터베이스를 뒤지는 중...', 'exec');
-        const examplesSummary = questionDatabase.slice(0, 5).map((q, i) => `ID ${i}: [${q.subject}] ${q.exam_name}`).join('\n');
         const system = "너는 지문을 분석하여 가장 적절한 문제 유형을 선정하는 탐색 개미야. 반드시 JSON으로만 응답해.";
-        const user = `다음 지문에 가장 잘 어울리는 문제 유형 DNA를 골라줘.\n\n[지문]\n${passage}\n\n[예시 목록]\n${examplesSummary}\n\n응답 형식: { "selected_id": 0, "reason": "이유" }`;
+        const user = `지문에 어울리는 유형 ID를 골라줘. ID 0번을 우선해.\n\n[지문]\n${passage}\n\n응답 형식: { "selected_id": 0, "reason": "이유" }`;
         const res = await callGemma(system, user, true);
         const choice = JSON.parse(res);
         return questionDatabase[choice.selected_id] || questionDatabase[0];
@@ -94,36 +95,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function antPurifier(text) {
         log('정제 개미(Purifier)가 불순물을 제거하는 중...', 'exec');
-        const system = "너는 텍스트에서 순수 영어 본문만 추출하는 정제 개미야. 한글은 모두 제거해.";
+        const system = "텍스트에서 순수 영어 본문만 추출해.";
         return await callGemma(system, text);
     }
 
     async function antArchitect(passage, dna) {
         log('설계 개미(Architect)가 출제 포인트를 설계 중...', 'exec');
-        const system = "너는 문제 설계 개미야. 출제 포인트를 제안해. JSON으로 응답해.";
-        const user = `지문: ${passage}\n유형: ${JSON.stringify(dna.layout_defaults)}\n응답 형식: { "point": "설명" }`;
+        const system = "문제 설계 개미야. 출제 포인트를 JSON으로 응답해.";
+        const user = `지문: ${passage}\n응답 형식: { "point": "설명" }`;
         const res = await callGemma(system, user, true);
         return JSON.parse(res);
     }
 
     async function antModifier(passage, design, dna) {
         log('가공 개미(Modifier)가 지문에 빈칸/밑줄을 긋는 중...', 'exec');
-        const system = "너는 지문을 변형하는 개미야. 변형된 본문만 반환해.";
-        const user = `본문: ${passage}\n설계 포인트: ${design.point}`;
+        const system = "지문을 변형하는 개미야. 변형된 본문만 반환해.";
+        const user = `본문: ${passage}\n포인트: ${design.point}`;
         return await callGemma(system, user);
     }
 
     async function antVoice(dna) {
         log('발성 개미(Voice)가 질문을 작성 중...', 'exec');
-        const system = "너는 질문(발문)을 작성하는 개미야.";
-        const user = `영어 시험용 질문 문장을 하나 만들어줘. (예: 윗글의 내용과 일치하지 않는 것은?)`;
+        const system = "질문을 작성하는 개미야.";
+        const user = `영어 시험용 질문 문장을 하나 만들어줘.`;
         return await callGemma(system, user);
     }
 
     async function antCultivator(passage, modifiedPassage, question, dna) {
         log('배양 개미(Cultivator)가 보기 데이터를 생성 중...', 'exec');
-        const system = "너는 보기(1정답, 4오답)를 만드는 개미야. JSON으로 응답해.";
-        const user = `본문: ${passage}\n가공지문: ${modifiedPassage}\n질문: ${question}\n응답 형식: { "answer": "정답", "distractors": ["오답1","오답2","오답3","오답4"], "explanation": "해설" }`;
+        const system = "보기(1정답, 4오답)를 만드는 개미야. JSON으로 응답해.";
+        const user = `지문: ${passage}\n질문: ${question}\n응답 형식: { "answer": "정답", "distractors": ["오답1","오답2","오답3","오답4"], "explanation": "해설" }`;
         const res = await callGemma(system, user, true);
         return JSON.parse(res);
     }
@@ -136,10 +137,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             [options[i], options[j]] = [options[j], options[i]];
         }
         const marks = ['①', '②', '③', '④', '⑤'];
-        const numberedOptions = options.map((opt, i) => `${marks[i]} ${opt}`);
         return {
             question: question,
-            options: numberedOptions,
+            options: options.map((opt, i) => `${marks[i]} ${opt}`),
             answer: marks[options.indexOf(cultivatorData.answer)],
             explanation: cultivatorData.explanation
         };
@@ -147,13 +147,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function antAuditor(passage, problem) {
         log('검수 개미(Auditor)가 최종 점검 중...', 'exec');
-        const system = "너는 무자비한 검수 개미야. 완벽하면 'PASS' 아니면 'FAIL:이유'만 말해.";
-        const user = `지문: ${passage}\n문제: ${JSON.stringify(problem)}`;
+        const system = "무자비한 검수 개미야. 완벽하면 'PASS' 아니면 'FAIL'만 말해.";
+        const user = `문제: ${JSON.stringify(problem)}`;
         const res = await callGemma(system, user);
         return res.toUpperCase().includes('PASS');
     }
 
-    // --- MAIN PIPELINE ---
     generateBtn.onclick = async () => {
         const rawInput = readingMaterial.value.trim();
         if (!rawInput || !currentApiKey) return alert('지문과 API 키가 필요합니다.');
@@ -164,13 +163,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         resultContainer.innerHTML = '';
 
         try {
-            log('Ant Colony Operation Started (Safe Mode)...', 'info');
+            log('Ant Colony Operation Started...', 'info');
             const cleanPassage = await antPurifier(rawInput);
             const count = parseInt(predictCount.value) || 1;
             const finalQuestions = [];
 
             for (let i = 0; i < count; i++) {
-                log(`[${i+1}번 생산라인] 개미들 투입 중...`, 'info');
+                log(`[${i+1}번 생산라인] 가동 중...`, 'info');
                 const dna = await antDNAScout(cleanPassage);
                 const design = await antArchitect(cleanPassage, dna);
                 const modifiedPassage = await antModifier(cleanPassage, design, dna);
@@ -182,7 +181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     finalQuestions.push({ ...assembly, passage: modifiedPassage });
                     log(`${i+1}번 문제 생산 성공!`, 'success');
                 } else {
-                    log(`${i+1}번 문제 검수 실패, 재가공 필요.`, 'error');
+                    log(`${i+1}번 문제 검수 실패.`, 'error');
                 }
             }
             renderResults(finalQuestions);
@@ -195,7 +194,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function renderResults(questions) {
         if (questions.length === 0) {
-            resultContainer.innerHTML = '<p class="empty-msg">개미들이 문제를 완성하지 못했습니다. 다시 시도해 주세요.</p>';
+            resultContainer.innerHTML = '<p class="empty-msg">개미들이 문제를 완성하지 못했습니다.</p>';
             return;
         }
         questions.forEach((q, i) => {
