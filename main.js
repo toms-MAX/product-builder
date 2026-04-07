@@ -2,9 +2,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('Gemma 4 Ant Colony Exam Engine v5.1 (Google API) initialized');
 
     // --- CONFIGURATION ---
-    // Gemma 4 사용을 위해 Google AI Studio 엔드포인트를 사용합니다.
+    // Google AI Studio 엔드포인트입니다.
     const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/'; 
-    const MODEL_NAME = 'gemini-1.5-pro'; // 실제 Gemma 4 출시 모델명으로 변경 가능 (예: 'gemma-4-it')
+    // 대부분의 환경에서 가장 안정적이고 빠른 'gemini-1.5-flash'를 기본값으로 설정합니다.
+    // Gemma 4 정식 명칭이 확인되면 이 부분을 'gemma-4-it' 등으로 변경하여 사용하세요.
+    const MODEL_NAME = 'gemini-1.5-flash'; 
     
     let currentApiKey = localStorage.getItem('gemma_api_key') || '';
     let questionDatabase = [];
