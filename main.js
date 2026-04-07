@@ -1,17 +1,17 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Gemma 4 Ant Colony Exam Engine v5.1 (Google API) initialized');
+    console.log('Gemma 4 Ant Colony Exam Engine v6.0 (Genuine Gemma 4) initialized');
 
     // --- CONFIGURATION ---
-    // Google AI Studio 엔드포인트입니다.
-    const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/'; 
-    // 대부분의 환경에서 가장 안정적이고 빠른 'gemini-1.5-flash'를 기본값으로 설정합니다.
-    // Gemma 4 정식 명칭이 확인되면 이 부분을 'gemma-4-it' 등으로 변경하여 사용하세요.
-    const MODEL_NAME = 'gemini-1.5-flash'; 
+    // Google AI Studio (Gemini API) 엔드포인트입니다.
+    const API_URL = 'https://generativelanguage.googleapis.com/v1/models/'; 
+    
+    // 🔥 Gemma 4 공식 모델 ID 적용!
+    // 상황에 따라 'gemma-4-31b-it'으로 변경하여 더 강력한 성능을 낼 수 있습니다.
+    const MODEL_NAME = 'gemma-4-26b-a4b-it'; 
     
     let currentApiKey = localStorage.getItem('gemma_api_key') || '';
     let questionDatabase = [];
 
-    // --- UI ELEMENTS ---
     const readingMaterial = document.getElementById('reading-material');
     const generateBtn = document.getElementById('generate-btn');
     const resultContainer = document.getElementById('generated-questions');
@@ -23,7 +23,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     apiKeyInput.value = currentApiKey;
 
-    // --- INITIALIZATION ---
     async function init() {
         try {
             const resp = await fetch('questions.json');
@@ -38,7 +37,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     saveKeyBtn.onclick = () => {
         currentApiKey = apiKeyInput.value.trim();
         localStorage.setItem('gemma_api_key', currentApiKey);
-        alert('Gemma API Key (Google AI Studio) Saved');
+        alert('Gemma 4 API Key Saved');
     };
 
     function log(msg, type = 'info') {
@@ -54,15 +53,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function callGemma(systemInstruction, userPrompt, isJson = false) {
-        // Google Gemini API 규격 (Gemma 4 지원용)
+        // v1 API 규격 (Gemma 4 공식 지원)
         const fullUrl = `${API_URL}${MODEL_NAME}:generateContent?key=${currentApiKey}`;
         
         const requestBody = {
-            contents: [{ parts: [{ text: userPrompt }] }],
-            systemInstruction: { parts: [{ text: systemInstruction }] },
+            contents: [
+                {
+                    role: "user",
+                    parts: [{ text: `[System Instruction]\n${systemInstruction}\n\n[User Input]\n${userPrompt}` }]
+                }
+            ],
             generationConfig: {
-                temperature: 0.4,
-                responseMimeType: isJson ? "application/json" : "text/plain"
+                temperature: 0.3, // 문제의 정확성을 위해 온도를 살짝 낮춥니다.
+                ...(isJson ? { responseMimeType: "application/json" } : {})
             }
         };
 
@@ -73,16 +76,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error?.message || 'API 호출 실패');
+        if (!resp.ok) {
+            console.error('API Error Details:', data);
+            throw new Error(data.error?.message || 'API 호출 실패');
+        }
         
         return data.candidates[0].content.parts[0].text;
     }
 
-    // --- THE ANT COLONY (AGENTS) ---
+    // --- THE ANT COLONY (Gemma 4 AGENTS) ---
 
     async function antDNAScout(passage) {
         log('탐색 개미(Scout)가 DNA 데이터베이스를 뒤지는 중...', 'exec');
-        const examplesSummary = questionDatabase.slice(0, 10).map((q, i) => `ID ${i}: [${q.type}] ${q.question}`).join('\n');
+        const examplesSummary = questionDatabase.slice(0, 5).map((q, i) => `ID ${i}: [${q.subject}] ${q.exam_name}`).join('\n');
         const system = "너는 지문을 분석하여 가장 적절한 문제 유형을 선정하는 탐색 개미야. 반드시 JSON으로만 응답해.";
         const user = `다음 지문에 가장 잘 어울리는 문제 유형 DNA를 골라줘.\n\n[지문]\n${passage}\n\n[예시 목록]\n${examplesSummary}\n\n응답 형식: { "selected_id": 숫자, "reason": "이유" }`;
         const res = await callGemma(system, user, true);
@@ -99,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function antArchitect(passage, dna) {
         log('설계 개미(Architect)가 출제 포인트를 설계 중...', 'exec');
         const system = "너는 문제 설계 개미야. 출제 포인트를 제안해. JSON으로 응답해.";
-        const user = `지문: ${passage}\n유형: ${dna.type}\n응답 형식: { "point": "설명" }`;
+        const user = `지문: ${passage}\n유형: ${JSON.stringify(dna.layout_defaults)}\n응답 형식: { "point": "설명" }`;
         const res = await callGemma(system, user, true);
         return JSON.parse(res);
     }
@@ -107,14 +113,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function antModifier(passage, design, dna) {
         log('가공 개미(Modifier)가 지문에 빈칸/밑줄을 긋는 중...', 'exec');
         const system = "너는 지문을 변형하는 개미야. 변형된 본문만 반환해.";
-        const user = `본문: ${passage}\n설계 포인트: ${design.point}\n유형: ${dna.type}`;
+        const user = `본문: ${passage}\n설계 포인트: ${design.point}`;
         return await callGemma(system, user);
     }
 
     async function antVoice(dna) {
         log('발성 개미(Voice)가 질문을 작성 중...', 'exec');
         const system = "너는 질문(발문)을 작성하는 개미야.";
-        const user = `유형: ${dna.type}, 예시 질문: ${dna.question}`;
+        const user = `영어 시험용 질문 문장을 하나 만들어줘.`;
         return await callGemma(system, user);
     }
 
@@ -154,7 +160,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- MAIN PIPELINE ---
     generateBtn.onclick = async () => {
         const rawInput = readingMaterial.value.trim();
-        if (!rawInput || !currentApiKey) return alert('지문과 Google API 키가 필요합니다.');
+        if (!rawInput || !currentApiKey) return alert('지문과 API 키가 필요합니다.');
 
         generateBtn.disabled = true;
         factoryStatus.style.display = 'block';
