@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentApiKey = localStorage.getItem('groq_api_key') || '';
     let questionDNADatabase = [];
 
-    // ... (DOM element variables remain the same) ...
     const readingMaterial = document.getElementById('reading-material');
     const generateBtn = document.getElementById('generate-btn');
     const resultContainer = document.getElementById('generated-questions');
@@ -41,7 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const timestamp = new Date().toLocaleTimeString();
         let prefix = '[INFO]';
         if (type === 'exec') { prefix = '<span style="color: #f1c40f;">[ANT ]</span>'; div.style.color = '#f1c40f'; }
-        if (type === 'harness') { prefix = '<span style="color: #9b59b6;">[HARNESS]</span>'; div.style.color = '#9b59b6'; } // Renamed from 'link'
+        if (type === 'harness') { prefix = '<span style="color: #9b59b6;">[HARNESS]</span>'; div.style.color = '#9b59b6'; }
         if (type === 'success') { prefix = '<span style="color: #2ecc71;">[OK  ]</span>'; div.style.color = '#2ecc71'; }
         if (type === 'error') { prefix = '<span style="color: #e74c3c;">[ERR ]</span>'; div.style.color = '#e74c3c'; }
         div.innerHTML = `${prefix} ${timestamp} - ${msg}`;
@@ -52,7 +51,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
     async function callGroq(systemInstruction, userPrompt, isJson = false, attempt = 0) {
-        // ... (callGroq function remains the same, focusing on reliable API calls) ...
         if (attempt === 0) await sleep(1500);
 
         try {
@@ -156,23 +154,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         return JSON.parse(await callGroq(system, user, true));
     }
 
-    // --- Harness System v2.0: DNA-Based Backtesting --- 
     async function harnessAuditor(assembly, dna) {
         log('하네스 시스템(Auditor): 생성된 문제가 원본 DNA 설계도와 일치하는지 정밀 대조/백테스팅합니다...', 'harness');
         const feedbacks = [];
 
-        // 1. Question Format Check
         if (dna.question_template && !assembly.question.includes(dna.question_template.substring(0, 10))) {
             feedbacks.push(`질문 형식이 DNA와 다릅니다. '${dna.question_template}' 형식을 따라야 합니다.`);
         }
 
-        // 2. Options Format Check
         const format = dna.options_format.toLowerCase();
         const isEnglish = (str) => /[a-zA-Z]/.test(str);
         const isKorean = (str) => /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(str);
 
         for(const opt of assembly.options) {
-            const text = opt.substring(2).trim(); // Remove '① '
+            const text = opt.substring(2).trim();
             if (format.includes('영어') && !isEnglish(text)) {
                 feedbacks.push(`보기(${text})가 DNA 형식('${dna.options_format}')과 일치하지 않습니다. 영어가 포함되어야 합니다.`);
                 break;
@@ -200,7 +195,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
 
-    // --- MAIN PIPELINE (v2.0) ---
+    // --- MAIN PIPELINE (v2.1 - With Data Validation) ---
     generateBtn.onclick = async () => {
         const rawInput = readingMaterial.value.trim();
         if (!rawInput || !currentApiKey) {
@@ -213,7 +208,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         resultContainer.innerHTML = '';
 
         try {
-            log('Harness System v2.0 가동 시작.', 'info');
+            log('Harness System v2.1 가동 시작.', 'info');
             const analysis = await antAnalyst(rawInput);
             
             const count = parseInt(predictCount.value) || 1;
@@ -233,9 +228,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                         
                         const design = await antArchitect(rawInput, analysis, selectedDNA, lastFeedback);
                         const modifiedPassage = await antModifier(rawInput, design, selectedDNA, lastFeedback);
-                        const questionText = selectedDNA.question_template; // Use template directly
+                        const questionText = selectedDNA.question_template;
                         
                         const cData = await antCultivator(rawInput, modifiedPassage, design, selectedDNA, lastFeedback);
+
+                        // --- DATA VALIDATION SAFETY-NET ---
+                        if (!cData || !cData.distractors || !Array.isArray(cData.distractors) || !cData.answer) {
+                            throw new Error(`[데이터 검증 실패] 배양 개미(Cultivator)가 유효하지 않은 데이터를 반환했습니다. (answer: ${cData ? cData.answer : 'undefined'}, distractors: ${cData ? JSON.stringify(cData.distractors) : 'undefined'}). 이 피드백을 바탕으로 재시도합니다.`);
+                        }
+                        // --- END SAFETY-NET ---
 
                         const options = [cData.answer, ...cData.distractors].sort(() => Math.random() - 0.5);
                         const marks = ['①', '②', '③', '④', '⑤'];
@@ -245,7 +246,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             answer: marks[options.indexOf(cData.answer)],
                             explanation: cData.explanation,
                             passage: modifiedPassage,
-                            dna: selectedDNA // For auditing
+                            dna: selectedDNA
                         };
 
                         const auditResult = await harnessAuditor(assembly, selectedDNA);
@@ -270,6 +271,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderResults(finalQuestions);
         } catch (e) { 
             log('시스템 전체에 치명적 오류 발생: ' + e.message, 'error'); 
+            // In a real-world scenario, you might want to have a more specific global error handler here.
+            // For this example, we just log it.
         }
         finally { 
             generateBtn.disabled = false; 
@@ -277,7 +280,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     function renderResults(questions) {
-        // ... (renderResults function remains the same) ...
         resultContainer.innerHTML = '';
         if (questions.length === 0) {
             resultContainer.innerHTML = '<p class="empty-msg">죄송합니다. 하네스 시스템의 엄격한 품질 기준을 통과한 문제를 생성하지 못했습니다. 입력 지문을 수정하거나, 다른 유형의 문제 생성을 유도해보세요.</p>';
@@ -300,5 +302,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             `;
             resultContainer.appendChild(qDiv);
         });
+    }
+
+    // Dummy antAnalyst for completion
+    async function antAnalyst(passage) {
+        log('분석 개미(Analyst): 지문 핵심 내용을 분석 및 구조화합니다...', 'exec');
+        const system = "You are a text analyst. Analyze the provided text and extract key topics, main arguments, and overall structure.";
+        const user = `Analyze the following text and provide a brief summary in JSON format:\n\n${passage}\n\n{\"topic\": \"...\", \"argument\": \"...\"}`;
+        // This is a simplified analysis. A real implementation would be more complex.
+        const analysisResult = await callGroq(system, user, true);
+        return JSON.parse(analysisResult);
     }
 });
