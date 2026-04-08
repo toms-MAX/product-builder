@@ -111,16 +111,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function antDNAScout(analysis) {
         log('탐색 개미(Scout) 가동...', 'exec');
-        const dnaSample = JSON.stringify(questionDatabase[0]);
-        const system = "너는 문제 유형 선정 전문가야.";
-        const user = `분석내용: ${JSON.stringify(analysis)}\n템플릿: ${dnaSample}\n\nJSON 응답: { "type": "...", "logic_reason": "..." }`;
-        return JSON.parse(await callGroq(system, user, true));
+        // 상위 5개의 예시 유형을 요약해서 전달
+        const dnaSummary = questionDatabase.slice(0, 5).map((q, i) => `ID ${i}: ${q.exam_name} 유형`).join('\n');
+        const system = "너는 문제 유형 선정 전문가야. 분석 내용을 바탕으로 가장 적절한 DNA ID를 선택해.";
+        const user = `분석내용: ${JSON.stringify(analysis)}\n\n[DNA 목록]\n${dnaSummary}\n\n반드시 JSON으로 응답: { "selected_id": 0, "type": "유형 이름", "logic_reason": "선택 이유" }`;
+        const res = JSON.parse(await callGroq(system, user, true));
+        return { ...questionDatabase[res.selected_id || 0], selected_type: res.type };
     }
 
     async function antArchitect(passage, analysis, dnaMatch) {
         log('설계 개미(Architect) 가동...', 'exec');
-        const system = "너는 문제 설계 전문가야. 반드시 제공된 지문 내의 문장을 정확하게 추출해서 target_sentence에 넣어야 해.";
-        const user = `지문: ${passage}\n유형: ${dnaMatch.type}\n분석: ${JSON.stringify(analysis)}\n\nJSON 응답: { "correct_logic": "...", "trap_logic": "...", "target_sentence": "지문에서 변형할 대상 문장을 그대로 복사해서 여기에 넣으세요." }`;
+        const system = "너는 문제 설계 전문가야. 반드시 제공된 [지문]의 내용에만 기반하여 문제를 설계해. 외부 지식(기후 변화 등)을 절대 섞지 마.";
+        const user = `지문: ${passage}\n유형: ${dnaMatch.selected_type || '일반'}\n분석: ${JSON.stringify(analysis)}\n\nJSON 응답: { "correct_logic": "정답의 근거", "trap_logic": "오답 구성 원리", "target_sentence": "지문에서 변형할 대상 문장을 '그대로' 복사" }`;
         return JSON.parse(await callGroq(system, user, true));
     }
 
@@ -137,15 +139,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function antModifier(passage, design) {
         log('가공 개미(Modifier) 가동...', 'exec');
-        const system = "너는 지문 변형 전문가야. 오직 영어만 사용해.";
-        const user = `본문: ${passage}\n설계: ${design.target_sentence}를 변형\n\n변형된 지문만 반환해. 기호는 ⓐ~ⓔ 또는 [ (A) ] 사용.`;
+        const system = "너는 지문 변형 전문가야. [본문]의 내용을 유지하면서 지정된 문장만 변형해. 다른 주제의 내용을 추가하지 마.";
+        const user = `본문: ${passage}\n설계: ${design.target_sentence}를 변형\n\n변형된 지문만 반환해.`;
         return await callGroq(system, user);
     }
 
     async function antCultivator(passage, modifiedPassage, design, question) {
         log('배양 개미(Cultivator) 가동...', 'exec');
-        const system = "너는 보기 생성 전문가야.";
-        const user = `지문: ${passage}\n변형: ${modifiedPassage}\n의도: ${design.correct_logic}\n질문: ${question}\n\nJSON 응답: { "answer": "...", "distractors": ["...","...","...","..."], "explanation": "..." }`;
+        const system = "너는 보기 생성 전문가야. 오직 제공된 [지문]과 [변형지문]의 내용에만 근거하여 보기를 만들어.";
+        const user = `지문: ${passage}\n변형: ${modifiedPassage}\n의도: ${design.correct_logic}\n질문: ${question}\n\nJSON 응답: { "answer": "정답", "distractors": ["오답1","오답2","오답3","오답4"], "explanation": "해설" }`;
         return JSON.parse(await callGroq(system, user, true));
     }
 
