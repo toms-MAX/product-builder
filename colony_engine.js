@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Ant Colony Exam Engine v8.5 (Connected Intelligence) initialized');
+    console.log('Ant Colony Exam Engine v10.0 (Organic Harness Mode) initialized');
 
     const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
     const MODEL_NAME = 'llama-3.3-70b-versatile'; 
@@ -51,7 +51,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
     async function callGroq(systemInstruction, userPrompt, isJson = false, attempt = 0) {
-        // 기본 딜레이 (RPM 30 제한을 위해 약 2초 간격 유지 권장)
         if (attempt === 0) await sleep(1500);
 
         try {
@@ -61,7 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 body: JSON.stringify({
                     model: MODEL_NAME,
                     messages: [
-                        { role: 'system', content: systemInstruction + "\n오직 결과 데이터만 반환할 것." },
+                        { role: 'system', content: systemInstruction + "\n오직 요청된 형식의 결과 데이터만 반환할 것." },
                         { role: 'user', content: userPrompt }
                     ],
                     temperature: 0.1, 
@@ -74,7 +73,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (resp.status === 429) {
                 if (attempt < 5) {
                     const waitTime = Math.pow(2, attempt) * 2000;
-                    log(`Rate Limit 도달. ${waitTime/1000}초 후 재시도... (${attempt + 1}/5)`, 'error');
+                    log(`Rate Limit 도달. ${waitTime/1000}초 후 재시도...`, 'error');
                     await sleep(waitTime);
                     return callGroq(systemInstruction, userPrompt, isJson, attempt + 1);
                 }
@@ -85,7 +84,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             if (e.message.includes('Rate limit') && attempt < 5) {
                 const waitTime = Math.pow(2, attempt) * 2000;
-                log(`API 제한 감지. ${waitTime/1000}초 후 재시도...`, 'error');
                 await sleep(waitTime);
                 return callGroq(systemInstruction, userPrompt, isJson, attempt + 1);
             }
@@ -93,79 +91,60 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // --- AGENTS & LINK INSPECTOR ---
+    // --- AGENTS WITH ORGANIC FEEDBACK ---
 
     async function antAnalyst(passage) {
-        log('분석 개미(Analyst) 가동...', 'exec');
-        const system = "너는 지문 분석 전문가야.";
-        const user = `지문 분석 요청: ${passage}\n\nJSON 응답: { "theme": "...", "logic_flow": "...", "keywords": [], "grammar_points": [] }`;
+        log('분석 개미(Analyst): 지문 해체 및 구조화 중...', 'exec');
+        const system = "너는 지문 분석 전문가야. 지문의 논리적 뼈대와 핵심 키워드를 추출해.";
+        const user = `[지문]\n${passage}\n\nJSON 응답: { "theme": "주제", "logic_flow": "논리구조", "keywords": ["핵심단어"], "grammar_points": ["문법포인트"] }`;
         return JSON.parse(await callGroq(system, user, true));
     }
 
-    // [LINK] Analyst -> Scout 연결 검증
-    async function inspectLinkAnalysisToScout(analysis) {
-        log('감시 개미(Linker): 분석 데이터 정합성 체크 중...', 'link');
-        if (!analysis.theme || analysis.keywords.length === 0) throw new Error('분석 데이터가 부실합니다.');
-        return true;
-    }
-
     async function antDNAScout(analysis) {
-        log('탐색 개미(Scout) 가동...', 'exec');
-        // 상위 5개의 예시 유형을 요약해서 전달
-        const dnaSummary = questionDatabase.slice(0, 5).map((q, i) => `ID ${i}: ${q.exam_name} 유형`).join('\n');
-        const system = "너는 문제 유형 선정 전문가야. 분석 내용을 바탕으로 가장 적절한 DNA ID를 선택해.";
-        const user = `분석내용: ${JSON.stringify(analysis)}\n\n[DNA 목록]\n${dnaSummary}\n\n반드시 JSON으로 응답: { "selected_id": 0, "type": "유형 이름", "logic_reason": "선택 이유" }`;
+        log('탐색 개미(Scout): 최적 출제 DNA 탐색 중...', 'exec');
+        const dnaSummary = questionDatabase.slice(0, 5).map((q, i) => `ID ${i}: ${q.exam_name}`).join('\n');
+        const system = "너는 문제 유형 선정 전문가야. 분석 내용을 바탕으로 가장 적절한 DNA를 골라.";
+        const user = `[분석]\n${JSON.stringify(analysis)}\n\n[DNA 목록]\n${dnaSummary}\n\nJSON 응답: { "selected_id": 0, "type": "유형명" }`;
         const res = JSON.parse(await callGroq(system, user, true));
         return { ...questionDatabase[res.selected_id || 0], selected_type: res.type };
     }
 
-    async function antArchitect(passage, analysis, dnaMatch) {
-        log('설계 개미(Architect) 가동...', 'exec');
-        const system = "너는 문제 설계 전문가야. 반드시 제공된 [지문]의 내용에만 기반하여 문제를 설계해. 외부 지식(기후 변화 등)을 절대 섞지 마.";
-        const user = `지문: ${passage}\n유형: ${dnaMatch.selected_type || '일반'}\n분석: ${JSON.stringify(analysis)}\n\nJSON 응답: { "correct_logic": "정답의 근거", "trap_logic": "오답 구성 원리", "target_sentence": "지문에서 변형할 대상 문장을 '그대로' 복사" }`;
+    async function antArchitect(passage, analysis, dnaMatch, feedback = null) {
+        log('설계 개미(Architect): 문제 메커니즘 설계 중...', 'exec');
+        const system = "너는 문제 설계 전문가야. 원본 지문의 단어와 문장을 유지하면서 문제를 설계해.";
+        let user = `[원본]\n${passage}\n[분석]\n${JSON.stringify(analysis)}\n[유형]\n${dnaMatch.selected_type}\n`;
+        if (feedback) user += `\n[수정요청]\n${feedback}\n`;
+        user += `\nJSON 응답: { "correct_logic": "정답근거", "trap_logic": "오답원리", "target_sentence": "지문에서 복사한 문장" }`;
         return JSON.parse(await callGroq(system, user, true));
     }
 
-    // [LINK] Architect -> Modifier 연결 검증
-    async function inspectLinkDesignToModifier(passage, design) {
-        log('감시 개미(Linker): 설계도가 지문에 적용 가능한지 체크 중...', 'link');
-        const target = (design.target_sentence || "").trim();
-        if (!target || !passage.includes(target.substring(0, 10))) {
-            log('경고: 설계된 문장이 지문에 존재하지 않습니다. 재보정 요청.', 'error');
-            return false;
-        }
-        return true;
-    }
-
-    async function antModifier(passage, design) {
-        log('가공 개미(Modifier) 가동...', 'exec');
-        const system = "너는 지문 변형 전문가야. [본문]의 내용을 유지하면서 지정된 문장만 변형해. 다른 주제의 내용을 추가하지 마.";
-        const user = `본문: ${passage}\n설계: ${design.target_sentence}를 변형\n\n변형된 지문만 반환해.`;
+    async function antModifier(passage, design, feedback = null) {
+        log('가공 개미(Modifier): 지문 변형 및 하네스 연결 중...', 'exec');
+        const system = "너는 지문 변형 전문가야. 설계된 문장을 지문 내에서 가공해.";
+        let user = `[원본]\n${passage}\n[설계]\n${design.target_sentence}를 기반으로 변형\n`;
+        if (feedback) user += `\n[수정요청]\n${feedback}\n`;
+        user += `\n변형된 지문 내용만 반환.`;
         return await callGroq(system, user);
     }
 
-    async function antCultivator(passage, modifiedPassage, design, question) {
-        log('배양 개미(Cultivator) 가동...', 'exec');
-        const system = "너는 보기 생성 전문가야. 오직 제공된 [지문]과 [변형지문]의 내용에만 근거하여 보기를 만들어.";
-        const user = `지문: ${passage}\n변형: ${modifiedPassage}\n의도: ${design.correct_logic}\n질문: ${question}\n\nJSON 응답: { "answer": "정답", "distractors": ["오답1","오답2","오답3","오답4"], "explanation": "해설" }`;
+    async function antCultivator(passage, modified, design, question, feedback = null) {
+        log('배양 개미(Cultivator): 보기 데이터 정밀 생성 중...', 'exec');
+        const system = "너는 보기 생성 전문가야. 지문의 논리와 보기가 완벽히 일치해야 해.";
+        let user = `[원본]\n${passage}\n[변형]\n${modified}\n[질문]\n${question}\n[의도]\n${design.correct_logic}\n`;
+        if (feedback) user += `\n[수정요청]\n${feedback}\n`;
+        user += `\nJSON 응답: { "answer": "정답", "distractors": ["오답1","오답2","오답3","오답4"], "explanation": "해설" }`;
         return JSON.parse(await callGroq(system, user, true));
     }
 
-    // [LINK] Cultivator -> Assembler 연결 검증
-    async function inspectLinkOptionsToFinal(options) {
-        log('감시 개미(Linker): 보기와 정답의 논리적 일관성 체크 중...', 'link');
-        if (options.distractors.includes(options.answer)) throw new Error('정답과 오답이 중복됩니다.');
-        return true;
-    }
-
     async function antAuditor(passage, analysis, problem) {
-        log('최종 검수 개미(Auditor) 심사 중...', 'exec');
-        const user = `지문분석: ${JSON.stringify(analysis)}\n문제: ${JSON.stringify(problem)}\n\n완벽하면 'PASS', 아니면 'FAIL:이유'`;
-        const res = await callGroq("너는 깐깐한 검수위원이야.", user);
-        return res;
+        log('최종 검수 개미(Auditor): 공정 무결성 최종 판정 중...', 'exec');
+        const system = "너는 무자비한 검수관이야. 지문과 문제가 따로 놀면 FAIL을 줘.";
+        const user = `[지문]\n${passage}\n[분석]\n${JSON.stringify(analysis)}\n[문제]\n${JSON.stringify(problem)}\n\n성공 시 'PASS', 실패 시 'FAIL:이유 및 수정 방향'`;
+        return await callGroq(system, user);
     }
 
-    // --- PIPELINE WITH LINKERS ---
+    // --- ORGANIC PIPELINE ---
+
     generateBtn.onclick = async () => {
         const rawInput = readingMaterial.value.trim();
         if (!rawInput || !currentApiKey) return alert('입력 확인 요망.');
@@ -176,56 +155,58 @@ document.addEventListener('DOMContentLoaded', async () => {
         resultContainer.innerHTML = '';
 
         try {
-            log('Ant Colony v8.5: Connected Intelligence 가동.', 'info');
+            log('Ant Colony v10.0: Organic Harness 가동.', 'info');
             const analysis = await antAnalyst(rawInput);
-            await inspectLinkAnalysisToScout(analysis);
-            
             const count = parseInt(predictCount.value) || 1;
             const finalQuestions = [];
 
             for (let i = 0; i < count; i++) {
-                log(`[생산 라인 #${i+1}] 순차 협업 시작`, 'info');
+                log(`[생산 라인 #${i+1}] 유기적 시퀀스 시작`, 'info');
                 let success = false;
                 let attempt = 0;
+                let lastFeedback = null;
 
                 while (!success && attempt < 3) {
                     attempt++;
                     try {
                         const dnaMatch = await antDNAScout(analysis);
-                        const design = await antArchitect(rawInput, analysis, dnaMatch);
+                        const design = await antArchitect(rawInput, analysis, dnaMatch, lastFeedback);
                         
-                        // Link Check
-                        if (!(await inspectLinkDesignToModifier(rawInput, design))) continue;
+                        // Link Check 1
+                        if (!rawInput.includes(design.target_sentence.substring(0, 5))) {
+                            lastFeedback = "Architect 오류: target_sentence가 원본에 존재하지 않음.";
+                            continue;
+                        }
 
-                        const modifiedPassage = await antModifier(rawInput, design);
-                        const questionText = await callGroq("시험 발문 작성자", `${dnaMatch.type} 유형 질문 작성.`);
-                        
-                        const cData = await antCultivator(rawInput, modifiedPassage, design, questionText);
-                        await inspectLinkOptionsToFinal(cData);
+                        const modified = await antModifier(rawInput, design, lastFeedback);
+                        const question = await callGroq("시험 발문 작성 전문가", `${dnaMatch.selected_type} 유형의 한국어 질문을 작성해.`);
+                        const cData = await antCultivator(rawInput, modified, design, question, lastFeedback);
 
                         const options = [cData.answer, ...cData.distractors].sort(() => Math.random() - 0.5);
                         const marks = ['①', '②', '③', '④', '⑤'];
                         const assembly = {
-                            question: questionText,
+                            question: question,
                             options: options.map((opt, idx) => `${marks[idx]} ${opt}`),
                             answer: marks[options.indexOf(cData.answer)],
                             explanation: cData.explanation,
-                            passage: modifiedPassage
+                            passage: modified
                         };
 
                         const auditResult = await antAuditor(rawInput, analysis, assembly);
                         if (auditResult.toUpperCase().includes('PASS')) {
                             finalQuestions.push(assembly);
-                            log(`#${i+1}번 문제 생산 완료!`, 'success');
+                            log(`#${i+1}번 문제 하네스 체결 성공!`, 'success');
                             success = true;
                         } else {
-                            log(`[라인 #${i+1}] 검수 실패(${attempt}/3): ${auditResult}. 재시도.`, 'error');
+                            lastFeedback = auditResult.replace('FAIL:', '');
+                            log(`AUDITOR 피드백: ${lastFeedback}`, 'error');
+                            log(`[라인 #${i+1}] 피드백 기반 재시도 (${attempt}/3)`, 'info');
                         }
-                    } catch (e) { log(`라인 중단 및 복구 시도: ${e.message}`, 'error'); }
+                    } catch (e) { log(`오류 발생: ${e.message}`, 'error'); }
                 }
             }
             renderResults(finalQuestions);
-        } catch (e) { log('시스템 치명적 오류: ' + e.message, 'error'); }
+        } catch (e) { log('치명적 오류: ' + e.message, 'error'); }
         finally { generateBtn.disabled = false; }
     };
 
