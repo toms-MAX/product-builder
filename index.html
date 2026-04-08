@@ -1,1 +1,263 @@
-<!DOCTYPE html>\n<html lang=\"ko\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>Ant Colony - Exam Engine v1.1.0</title>\n    <!-- CACHE BUSTING: Add version query to force browser to reload files -->\n    <link rel=\"stylesheet\" href=\"style.css?v=1.1.0\">\n    <!-- Tesseract.js for OCR -->\n    <script src=\'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js\'></script>\n    <!-- PDF libraries -->\n    <script src=\"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js\"></script>\n    <script src=\"https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js\"></script>\n    <script src=\"https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js\"></script>\n</head>\n<body>\n    <div id=\"version-display\">v1.1.0</div>\n\n    <div class=\"main-container\">\n        <button id=\"theme-toggle\">다크 모드</button>\n        \n        <!-- Section 1: DNA Extraction Engine -->\n        <div class=\"section-container\">\n            <h2>🔬 DNA 추출 엔진 (Exam Structure Extractor)</h2>\n            <p>시험지 이미지를 업로드하고, 버튼 하나로 문제의 모든 DNA를 자동으로 추출합니다.</p>\n            \n            <div class=\"dna-extractor-layout\">\n                <div class=\"extractor-controls\">\n                    <h3>1. 시험지 이미지 업로드</h3>\n                    <input type=\"file\" id=\"image-upload\" accept=\"image/*\">\n                    <button id=\"full-auto-extract-btn\" class=\"action-btn master-btn\">🚀 DNA 자동 추출 (Full Auto)</button>\n                    <h4>추출 로그</h4>\n                    <div id=\"ocr-log\" class=\"factory-status\"></div>\n                </div>\n                <div class=\"image-preview-area\">\n                    <h3>이미지 미리보기</h3>\n                    <div id=\"image-preview-container\">\n                        <img id=\"image-preview\" src=\"\" alt=\"업로드된 이미지가 여기에 표시됩니다.\"/>\n                    </div>\n                </div>\n            </div>\n            \n            <div class=\"extracted-content-area\">\n                 <h4>추출된 DNA 최종 결과</h4>\n                 <textarea id=\"final-dna-result\" readonly placeholder=\"자동 추출된 최종 DNA가 여기에 표시됩니다...\"></textarea>\n                 <button id=\"load-to-bank-btn\" class=\"action-btn\">🧬 DNA 뱅크에 로드</button>\n            </div>\n        </div>\n\n        <!-- Divider -->\n        <hr class=\"section-divider\">\n\n        <!-- Section 2: Problem Generation Factory -->\n        <div class=\"section-container\">\n           <h2>🏭 문제 생성 공장 (Problem Generator)</h2>\n            <p>추출된 DNA나 기존 DNA를 사용하여 새로운 문제를 생성합니다.</p>\n            \n            <div class=\"main-layout\">\n                <div class=\"input-section\">\n                    <h3>🐜 1. 시험 지문 투입</h3>\n                    <textarea id=\"reading-material\" placeholder=\"개미들에게 줄 지문을 입력하세요...\"></textarea>\n                    \n                    <h3 style=\"margin-top: 20px;\">🧬 2. 생성할 문제 유형 선택</h3>\n                    <div id=\"dna-selection-container\" class=\"dna-selection-container\">\n                         <p style=\"color: #888;\">문제 유형(DNA) 로딩 중...</p>\n                    </div>\n                </div>\n\n                <div class=\"style-section\">\n                    <h3>🛠️ 3. 군집 제어 설정</h3>\n                    <div class=\"config-mini\">\n                        <label>생산 문항 수</label>\n                        <input type=\"number\" id=\"predict-count\" min=\"1\" max=\"10\" value=\"1\">\n                    </div>\n                    <button id=\"generate-btn\" class=\"action-btn\">⚙️ 개미 군집 가동</button>\n                    \n                    <h4>🐜 개미 실시간 작업 현황</h4>\n                    <div id=\"compute-log\" class=\"factory-status\"></div>\n                </div>\n            </div>\n            <!-- Generated questions will be appended here -->\n            <div id=\"generated-questions\"></div>\n        </div>\n    </div>\n\n    <!-- CACHE BUSTING: Add version query to force browser to reload files -->\n    <script src=\"colony_engine.js?v=1.1.0\"></script>\n</body>\n</html>\n
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ant Colony - Exam Engine v2.0</title>
+    
+    <!-- External JS Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- 
+    =================================================================
+    === ALL-IN-ONE STYLESHEET: Embedded to prevent loading issues ===
+    =================================================================
+    -->
+    <style>
+        :root {
+            --primary-color: #3a7dff;
+            --secondary-color: #6c757d;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --light-color: #f8f9fa;
+            --dark-color: #343a40;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            --border-radius: 0.5rem;
+            --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        body {
+            font-family: var(--font-family);
+            margin: 0;
+            background-color: #f0f2f5;
+            color: var(--dark-color);
+            line-height: 1.6;
+        }
+
+        .header {
+            background-color: #ffffff;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: var(--primary-color);
+        }
+        
+        .version-display {
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 0.3rem 0.6rem;
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 1rem;
+        }
+
+        .main-container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .section-container {
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+        }
+
+        .section-container h2 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* --- Forms & Buttons --- */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        input[type="file"],
+        input[type="number"],
+        textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ced4da;
+            border-radius: 0.25rem;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.25rem;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #fff;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .btn-primary { background-color: var(--primary-color); }
+        .btn-primary:hover { background-color: #0056b3; }
+        .btn-full { width: 100%; }
+
+        /* --- Specific Components --- */
+        #image-preview-container {
+            width: 100%;
+            min-height: 200px;
+            border: 2px dashed #ced4da;
+            border-radius: 0.25rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 1rem;
+            background-color: #f8f9fa;
+        }
+        #image-preview {
+            max-width: 100%;
+            max-height: 400px;
+            object-fit: contain;
+        }
+
+        .log-box {
+            height: 150px;
+            background-color: #212529;
+            color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            overflow-y: auto;
+            font-family: "SF Mono", "Fira Code", monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        #dna-selection-container {
+            height: 180px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 1rem;
+            background-color: #fdfdff;
+        }
+        .dna-checkbox-item {
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+
+        #generated-questions .question-card {
+            margin-top: 1.5rem;
+            background-color: #f8f9fa;
+            border-left: 5px solid var(--primary-color);
+            padding: 1.5rem;
+            border-radius: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header class="header">
+        <h1>🐜 Ant Colony - Exam Engine</h1>
+        <span class="version-display">v2.0 REBORN</span>
+    </header>
+
+    <main class="main-container">
+        
+        <!-- Section 1: DNA Extraction Engine -->
+        <section class="section-container" id="dna-extractor">
+            <h2>🔬 DNA 추출 엔진</h2>
+            
+            <div class="form-group">
+                <label for="image-upload">1. 시험지 이미지 업로드</label>
+                <input type="file" id="image-upload" accept="image/*">
+            </div>
+
+            <div id="image-preview-container">
+                <img id="image-preview" src="" alt="이미지 미리보기">
+            </div>
+
+            <div class="form-group" style="margin-top: 1.5rem;">
+                <button id="full-auto-extract-btn" class="btn btn-primary btn-full">🚀 DNA 자동 추출 (Full Auto)</button>
+            </div>
+            
+            <div class="form-group">
+                <label for="ocr-log">추출 로그</label>
+                <div id="ocr-log" class="log-box">시스템 대기 중...</div>
+            </div>
+
+            <div class="form-group">
+                <label for="final-dna-result">추출된 DNA 최종 결과</label>
+                <textarea id="final-dna-result" readonly></textarea>
+            </div>
+
+            <button id="load-to-bank-btn" class="btn btn-success btn-full" style="background-color: #28a745;">🧬 추출된 DNA를 문제 생성 지문으로 로드</button>
+        </section>
+
+        <!-- Section 2: Problem Generation Factory -->
+        <section class="section-container" id="problem-generator">
+            <h2>🏭 문제 생성 공장</h2>
+
+            <div class="form-group">
+                <label for="reading-material">1. 시험 지문</label>
+                <textarea id="reading-material" placeholder="DNA를 추출하여 로드하거나, 여기에 직접 지문을 입력하세요..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="dna-selection-container">2. 생성할 문제 유형 (DNA) 선택</label>
+                <div id="dna-selection-container">
+                    <p style="color: #888;">문제 유형(DNA) 로딩 중...</p>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="predict-count">3. 생성할 문항 수</label>
+                <input type="number" id="predict-count" min="1" max="10" value="1">
+            </div>
+
+            <button id="generate-btn" class="btn btn-primary btn-full">⚙️ 개미 군집 가동 (문제 생성)</button>
+
+            <div class="form-group" style="margin-top: 1.5rem;">
+                <label for="compute-log">🐜 개미 실시간 작업 현황</label>
+                <div id="compute-log" class="log-box">작업 대기 중...</div>
+            </div>
+
+            <div id="generated-questions">
+                <!-- Dynamically generated questions will appear here -->
+            </div>
+        </section>
+    </main>
+    
+    <!-- Load the engine, with cache busting for good measure -->
+    <script src="colony_engine.js?v=2.0.0"></script>
+
+</body>
+</html>
