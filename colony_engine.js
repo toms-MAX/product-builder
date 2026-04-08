@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const resp = await fetch('questions.json');
             questionDatabase = await resp.json();
             log(`전문가 DNA 로드 완료`, 'success');
-        } catch (e) {
+        } catch {
             log('데이터베이스 로드 실패.', 'error');
         }
     }
@@ -134,7 +134,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         log('최종 검수 개미(Auditor) 심사 중...', 'exec');
         const user = `지문분석: ${JSON.stringify(analysis)}\n문제: ${JSON.stringify(problem)}\n\n완벽하면 'PASS', 아니면 'FAIL:이유'`;
         const res = await callGroq("너는 깐깐한 검수위원이야.", user);
-        return res.toUpperCase().includes('PASS');
+        return res;
     }
 
     // --- PIPELINE WITH LINKERS ---
@@ -185,10 +185,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                             passage: modifiedPassage
                         };
 
-                        if (await antAuditor(rawInput, analysis, assembly)) {
+                        const auditResult = await antAuditor(rawInput, analysis, assembly);
+                        if (auditResult.toUpperCase().includes('PASS')) {
                             finalQuestions.push(assembly);
                             log(`#${i+1}번 문제 생산 완료!`, 'success');
                             success = true;
+                        } else {
+                            log(`[라인 #${i+1}] 검수 실패(${attempt}/3): ${auditResult}. 재시도.`, 'error');
                         }
                     } catch (e) { log(`라인 중단 및 복구 시도: ${e.message}`, 'error'); }
                 }

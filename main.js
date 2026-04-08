@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const resp = await fetch('questions.json');
             questionDatabase = await resp.json();
             log(`유전형질 데이터베이스 로드 완료: ${questionDatabase.length}개의 예시 보유`, 'success');
-        } catch (e) {
+        } catch {
             log('데이터베이스 로드 실패.', 'error');
         }
     }
@@ -106,21 +106,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         return JSON.parse(res);
     }
 
-    async function antModifier(passage, design, dna) {
+    async function antModifier(passage, design) {
         log('가공 개미(Modifier)가 지문에 빈칸/밑줄을 긋는 중...', 'exec');
         const system = "너는 지문을 변형하는 개미야. 변형된 본문만 반환해.";
         const user = `본문: ${passage}\n설계 포인트: ${design.point}`;
         return await callGemma(system, user);
     }
 
-    async function antVoice(dna) {
+    async function antVoice() {
         log('발성 개미(Voice)가 질문을 작성 중...', 'exec');
         const system = "너는 질문(발문)을 작성하는 개미야.";
         const user = `영어 시험용 질문 문장을 하나 만들어줘. (예: 윗글의 내용과 일치하지 않는 것은?)`;
         return await callGemma(system, user);
     }
 
-    async function antCultivator(passage, modifiedPassage, question, dna) {
+    async function antCultivator(passage, modifiedPassage, question) {
         log('배양 개미(Cultivator)가 보기 데이터를 생성 중...', 'exec');
         const system = "너는 보기(1정답, 4오답)를 만드는 개미야. JSON으로 응답해.";
         const user = `본문: ${passage}\n가공지문: ${modifiedPassage}\n질문: ${question}\n응답 형식: { "answer": "정답", "distractors": ["오답1","오답2","오답3","오답4"], "explanation": "해설" }`;
@@ -173,9 +173,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 log(`[${i+1}번 생산라인] 개미들 투입 중...`, 'info');
                 const dna = await antDNAScout(cleanPassage);
                 const design = await antArchitect(cleanPassage, dna);
-                const modifiedPassage = await antModifier(cleanPassage, design, dna);
-                const qText = await antVoice(dna);
-                const cData = await antCultivator(cleanPassage, modifiedPassage, qText, dna);
+                const modifiedPassage = await antModifier(cleanPassage, design);
+                const qText = await antVoice();
+                const cData = await antCultivator(cleanPassage, modifiedPassage, qText);
                 const assembly = await antAssembler(qText, cData);
                 
                 if (await antAuditor(cleanPassage, assembly)) {
