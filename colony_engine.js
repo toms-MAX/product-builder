@@ -48,23 +48,49 @@ document.addEventListener('DOMContentLoaded', async () => {
         factoryStatus.scrollTop = factoryStatus.scrollHeight;
     }
 
-    async function callGroq(systemInstruction, userPrompt, isJson = false) {
-        const resp = await fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: MODEL_NAME,
-                messages: [
-                    { role: 'system', content: systemInstruction + "\n오직 결과 데이터만 반환할 것." },
-                    { role: 'user', content: userPrompt }
-                ],
-                temperature: 0.1, 
-                response_format: isJson ? { type: "json_object" } : undefined
-            })
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error?.message || 'Groq API 호출 실패');
-        return data.choices[0].message.content;
+    const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+
+    async function callGroq(systemInstruction, userPrompt, isJson = false, attempt = 0) {
+        // 기본 딜레이 (RPM 30 제한을 위해 약 2초 간격 유지 권장)
+        if (attempt === 0) await sleep(1500);
+
+        try {
+            const resp = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${currentApiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: MODEL_NAME,
+                    messages: [
+                        { role: 'system', content: systemInstruction + "\n오직 결과 데이터만 반환할 것." },
+                        { role: 'user', content: userPrompt }
+                    ],
+                    temperature: 0.1, 
+                    response_format: isJson ? { type: "json_object" } : undefined
+                })
+            });
+            
+            const data = await resp.json();
+            
+            if (resp.status === 429) {
+                if (attempt < 5) {
+                    const waitTime = Math.pow(2, attempt) * 2000;
+                    log(`Rate Limit 도달. ${waitTime/1000}초 후 재시도... (${attempt + 1}/5)`, 'error');
+                    await sleep(waitTime);
+                    return callGroq(systemInstruction, userPrompt, isJson, attempt + 1);
+                }
+            }
+
+            if (!resp.ok) throw new Error(data.error?.message || 'Groq API 호출 실패');
+            return data.choices[0].message.content;
+        } catch (e) {
+            if (e.message.includes('Rate limit') && attempt < 5) {
+                const waitTime = Math.pow(2, attempt) * 2000;
+                log(`API 제한 감지. ${waitTime/1000}초 후 재시도...`, 'error');
+                await sleep(waitTime);
+                return callGroq(systemInstruction, userPrompt, isJson, attempt + 1);
+            }
+            throw e;
+        }
     }
 
     // --- AGENTS & LINK INSPECTOR ---
