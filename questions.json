@@ -1,1 +1,93 @@
-[  {    "exam_name": "밑줄 친 부분의 의미 추론",    "description": "지문의 특정 구나 절에 밑줄을 치고, 그 문맥적 의미를 파악하는 능력을 평가하는 유형입니다.",    "question_template": "윗글의 밑줄 친 (A)가 의미하는 바로 가장 적절한 것은?",    "options_format": "영어 서술형 (구 또는 절)"  },  {    "exam_name": "글의 흐름과 관계 없는 문장 고르기",    "description": "전체 글의 통일성을 해치는, 주제에서 벗어나는 문장을 찾는 유형입니다.",    "question_template": "다음 글에서 전체 흐름과 관계 없는 문장은?"  },  {    "exam_name": "주어진 문장이 들어가기에 가장 적절한 곳 고르기",    "description": "주어진 문장을 글의 흐름에 맞게 논리적으로 정확한 위치에 삽입하는 능력을 평가합니다.",    "question_template": "글의 흐름으로 보아, 주어진 문장이 들어가기에 가장 적절한 곳은?",    "passage_modification_required": true,     "modification_instruction": "지문의 특정 위치에 (A), (B), (C), (D), (E)와 같은 마커를 삽입합니다."  },  {    "exam_name": "글의 목적 파악하기",    "description": "글을 쓴 의도나 목적(예: 광고, 조언, 비판 등)을 파악하는 유형입니다.",    "question_template": "다음 글의 목적으로 가장 적절한 것은?",    "options_format": "한국어 서술형"  },  {    "exam_name": "빈칸 (A), (B)에 들어갈 단어 쌍 추론",    "description": "본문의 서로 다른 두 곳에 빈칸 (A)와 (B)를 만들고, 각 빈칸에 들어갈 가장 적절한 단어 쌍을 찾는 유형입니다.",    "question_Ttemplate": "다음 글의 빈칸 (A), (B)에 들어갈 말로 가장 적절한 것은?",    "passage_modification_required": true,    "modification_instruction": "지문에서 핵심적인 단어 두 개를 골라 각각 (A), (B)로 표시합니다.",    "options_format": "영어 단어 쌍 (A) - (B)"  }]
+
+[
+  {
+    "meta": {
+      "problem_id": "eng_comprehension_001",
+      "problem_type": "reading_comprehension",
+      "skill": "context_inference",
+      "sub_skill": "phrase_meaning_deduction",
+      "difficulty": "middle_school_2nd_grade",
+      "exam_level": "midterm_exam"
+    },
+    "pedagogy": {
+      "learning_objective": "문맥 안에서 특정 구나 절이 가지는 함축적 의미를 추론하는 능력을 기른다.",
+      "cognitive_skill": "inference",
+      "test_intent": "단어의 사전적 의미가 아닌, 글의 흐름에 따른 문맥적 의미 파악 능력을 평가한다.",
+      "trap_design": "밑줄 친 부분의 단어만 보고 해석할 경우 오해할 수 있는, 매력적인 오답을 배치한다.",
+      "distractor_strategy": "1. 글의 주제와 관련은 있으나 밑줄의 의미와는 다른 선택지, 2. 밑줄의 단어와 사전적 의미는 같으나 문맥과 다른 선택지"
+    },
+    "structure": {
+      "question_format": "single_choice_question",
+      "instruction_pattern": "윗글의 밑줄 친 (A)가 의미하는 바로 가장 적절한 것은?",
+      "choice_count": 5,
+      "answer_type": "single_select",
+      "dialogue_present": false,
+      "passage_present": true,
+      "option_structure": "full_sentence_korean",
+      "correct_answer_pattern": "The one that best paraphrases the contextual meaning of the underlined phrase."
+    },
+    "content": {
+      "question_text": "윗글의 밑줄 친 (A)가 의미하는 바로 가장 적절한 것은?",
+      "instruction_text": "다음 글을 읽고 물음에 답하시오.",
+      "dialogue_text": null,
+      "passage_text": "(The user will provide this)",
+      "choices": "(The AI will generate these)",
+      "answer": "(The AI will generate this)",
+      "explanation": "(The AI will generate this)"
+    },
+    "generation_dna": {
+      "generation_template": "meaning_inference_from_context",
+      "sentence_patterns": null,
+      "grammar_targets": null,
+      "vocabulary_constraints": ["middle_school_level"],
+      "variation_rules": ["change_passage_topic", "change_underlined_phrase"],
+      "difficulty_control_parameters": ["vocabulary_level", "sentence_complexity"],
+      "regeneration_prompt": "Create a 5-choice reading comprehension problem. First, write a 5-7 sentence English passage suitable for a 2nd-year middle school student. Underline one key phrase (A) in the passage whose meaning must be inferred from context. The question asks for the most appropriate meaning of the underlined phrase. The choices should be in Korean, with one correct answer and four plausible but incorrect distractors based on the passage's overall theme or the literal meaning of the words in the phrase."
+    }
+  },
+  {
+    "meta": {
+      "problem_id": "eng_writing_001",
+      "problem_type": "writing",
+      "skill": "summarization",
+      "sub_skill": "main_idea_synthesis",
+      "difficulty": "middle_school_3rd_grade",
+      "exam_level": "final_exam"
+    },
+    "pedagogy": {
+      "learning_objective": "글의 핵심 내용을 파악하여 한 문장의 주제문으로 요약하는 능력을 기른다.",
+      "cognitive_skill": "synthesis",
+      "test_intent": "글 전체를 관통하는 주제를 정확하게 응축하여 표현하는지 평가한다.",
+      "trap_design": null,
+      "distractor_strategy": null
+    },
+    "structure": {
+      "question_format": "short_answer_question",
+      "instruction_pattern": "다음 글의 주제를 한국어 한 문장으로 서술하시오.",
+      "choice_count": 0,
+      "answer_type": "free_text",
+      "dialogue_present": false,
+      "passage_present": true,
+      "option_structure": null,
+      "correct_answer_pattern": "A single Korean sentence that encapsulates the main idea of the passage."
+    },
+    "content": {
+      "question_text": "다음 글의 주제를 한국어 한 문장으로 서술하시오.",
+      "instruction_text": "다음 글을 읽고 물음에 답하시오.",
+      "dialogue_text": null,
+      "passage_text": "(The user will provide this)",
+      "choices": null,
+      "answer": "(The AI will evaluate this)",
+      "explanation": "주제문은 글의 핵심 키워드를 모두 포함하며, 전체 내용을 포괄하는 문장이어야 합니다."
+    },
+    "generation_dna": {
+      "generation_template": "thematic_summary_writing",
+      "sentence_patterns": null,
+      "grammar_targets": null,
+      "vocabulary_constraints": ["middle_school_level"],
+      "variation_rules": ["change_passage_topic"],
+      "difficulty_control_parameters": ["passage_length", "topic_abstraction_level"],
+      "regeneration_prompt": "Create a short-answer problem. First, provide a 7-10 sentence English passage for a 3rd-year middle school student. The question asks the student to summarize the main idea of the passage in a single Korean sentence. The AI's role is to generate the passage and the question."
+    }
+  }
+]
