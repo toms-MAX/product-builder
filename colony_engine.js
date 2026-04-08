@@ -1,6 +1,6 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Ant Colony v2.0.0 (REBORN) Initialized');
+    console.log('Ant Colony v2.0.1 (REBORN-STABLE) Initialized');
 
     // --- Configuration ---
     const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -60,11 +60,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function setupEventListeners() {
-        if (saveKeyBtn) saveKeyBtn.onclick = () => {
-            currentApiKey = apiKeyInput.value;
+        // The API Key section is now dynamically added, so we need to ensure these are not null
+        const dynamicApiKeyInput = document.getElementById('api-key-input');
+        const dynamicSaveKeyBtn = document.getElementById('save-key-btn');
+
+        if (dynamicSaveKeyBtn) dynamicSaveKeyBtn.onclick = () => {
+            currentApiKey = dynamicApiKeyInput.value;
             localStorage.setItem('groq_api_key', currentApiKey);
             log('API Key has been securely stored in your browser.', 'success', computeLog);
+            dynamicApiKeyInput.style.borderColor = 'green';
         };
+        if (dynamicApiKeyInput) {
+             dynamicApiKeyInput.value = currentApiKey;
+        }
+        
         if (imageUpload) imageUpload.onchange = handleImageUpload;
         if (fullAutoExtractBtn) fullAutoExtractBtn.onclick = runFullAutomation;
         if (loadToBankBtn) loadToBankBtn.onclick = loadExtractedDNA;
@@ -144,7 +153,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const masterDNA = problemDNADatabase[0]; // Use the first DNA as a structural template
             for (let i = 0; i < problemBlocks.length; i++) {
                 log(`Assembling DNA for block ${i + 1}/${problemBlocks.length}...`, 'ant', ocrLog);
-                const prompt = `You are a super-intelligent DNA assembler ant. Your task is to analyze a given \"Problem Block Text\" and convert it into a structured JSON object. This JSON must strictly follow the format of the provided \"Master DNA Template\". Do not invent new fields. Fill in the values based on your analysis of the problem block. For fields like 'choices', 'answer', or if some information isn't available in the block, use a null value. Your output must be only the final JSON object.\n\n--- Master DNA Template ---\n${JSON.stringify(masterDNA, null, 2)}\n\n--- Problem Block Text ---\n\"\"\"\n${problemBlocks[i]}\n\"\"\"`;
+                let prompt = `You are a super-intelligent DNA assembler ant. Your task is to analyze a given \"Problem Block Text\" and convert it into a structured JSON object. This JSON must strictly follow the format of the provided \"Master DNA Template\". Do not invent new fields. Fill in the values based on your analysis of the problem block. For fields like 'choices', 'answer', or if some information isn't available in the block, use a null value. Your output must be only the final JSON object.\n\n--- Master DNA Template ---\n${JSON.stringify(masterDNA, null, 2)}\n\n--- Problem Block Text ---\n\"\"\"\n${problemBlocks[i]}\n\"\"\"`;
+                prompt += "\n\nYour final output must be a single, valid JSON object.";
                 const jsonResponse = await callGroq(prompt, true);
                 const generatedDNA = JSON.parse(jsonResponse);
                 generatedDNA.meta.problem_id = `extracted-${Date.now()}-${i}`;
@@ -173,19 +183,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
         try {
-            // It might be a single object or an array, so we standardize it to an array.
             const parsed = JSON.parse(jsonString);
             const newDNAs = Array.isArray(parsed) ? parsed : [parsed];
 
             if (newDNAs.length === 0) throw new Error('Parsed data is empty.');
             
-            // Add to the main database and re-render the selection UI
             problemDNADatabase.unshift(...newDNAs);
             renderDNACheckboxes();
             
             log(`${newDNAs.length} new DNA strand(s) loaded into the Generator!`, 'success', computeLog);
             
-            // Also, for convenience, load the first extracted passage into the text area
             if(newDNAs[0].content && newDNAs[0].content.passage_text && newDNAs[0].content.passage_text !== "(Extracted from image)") {
                 readingMaterial.value = newDNAs[0].content.passage_text;
                 log('Loaded first passage into the text area.', 'info', computeLog);
@@ -251,7 +258,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function antArchitect(dna, passage) {
-        const prompt = dna.generation_dna.regeneration_prompt.replace("(The user will provide this)", `\"\"\"\n${passage}\n\"\"\"`);
+        let prompt = dna.generation_dna.regeneration_prompt.replace("(The user will provide this)", `\"\"\"\n${passage}\n\"\"\"`);
+        // Rule Enforcement: Ensure the API knows we expect JSON, preventing the common error.
+        prompt += "\n\nYour final output must be a single, valid JSON object, and nothing else.";
+        
         const response = await callGroq(prompt, true);
         let generated = JSON.parse(response);
         if (generated.content) {
@@ -295,33 +305,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             `;
         }).join('');
     }
-
-    // --- Add back the API key section that was accidentally removed ---
-    const problemGeneratorSection = document.getElementById('problem-generator');
-    const apiKeySection = document.createElement('div');
-    apiKeySection.className = 'form-group';
-    apiKeySection.innerHTML = `
-        <label for="api-key-input" style="display:flex; align-items:center; gap: 5px;">
-            Groq API Key 🔑
-            <small>(Required for all AI functions)</small>
-        </label>
-        <div style="display: flex; gap: 10px;">
-            <input type="password" id="api-key-input" placeholder="gsk_..." style="flex-grow: 1;">
-            <button id="save-key-btn" class="btn btn-secondary" style="background-color: #6c757d; padding: 0.5rem 1rem;">Save</button>
-        </div>
-    `;
-    // Prepend it to the generator section
-    problemGeneratorSection.prepend(apiKeySection);
     
-    // Now that the elements are in the DOM, re-assign them and call init
-    document.getElementById('save-key-btn').onclick = () => {
-        currentApiKey = document.getElementById('api-key-input').value;
-        localStorage.setItem('groq_api_key', currentApiKey);
-        log('API Key has been securely stored in your browser.', 'success', computeLog);
-        document.getElementById('api-key-input').style.borderColor = 'green';
-    };
-     document.getElementById('api-key-input').value = currentApiKey;
-
+    // --- Dynamic UI Injection ---
+    // Inject the API key input field into the DOM, because it's critical.
+    const problemGeneratorSection = document.getElementById('problem-generator');
+    if (problemGeneratorSection && !document.getElementById('api-key-input')) {
+        const apiKeySection = document.createElement('div');
+        apiKeySection.className = 'form-group';
+        apiKeySection.innerHTML = `
+            <label for="api-key-input" style="display:flex; align-items:center; gap: 5px;">
+                Groq API Key 🔑
+                <small>(Required for all AI functions)</small>
+            </label>
+            <div style="display: flex; gap: 10px;">
+                <input type="password" id="api-key-input" placeholder="gsk_..." style="flex-grow: 1;">
+                <button id="save-key-btn" class="btn btn-secondary" style="background-color: #6c757d; padding: 0.5rem 1rem;">Save</button>
+            </div>
+        `;
+        problemGeneratorSection.prepend(apiKeySection);
+    }
 
     init(); // Start the application
 });
