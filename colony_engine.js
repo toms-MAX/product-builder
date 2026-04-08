@@ -1,1 +1,327 @@
-document.addEventListener(\'DOMContentLoaded\', async () => {\n    console.log(\'Ant Colony v1.0.0 (Production Ready) Initialized\');\n\n    // --- Configuration ---\n    const API_URL = \'https://api.groq.com/openai/v1/chat/completions\';\n    const MODEL_NAME = \'llama-3.1-8b-instant\';\n    let currentApiKey = localStorage.getItem(\'groq_api_key\') || \'\';\n    let problemDNADatabase = [];\n\n    // --- DOM Elements ---\n    const apiKeyInput = document.getElementById(\'api-key-input\');\n    const saveKeyBtn = document.getElementById(\'save-key-btn\');\n    const imageUpload = document.getElementById(\'image-upload\');\n    const fullAutoExtractBtn = document.getElementById(\'full-auto-extract-btn\');\n    const imagePreview = document.getElementById(\'image-preview\');\n    const ocrLog = document.getElementById(\'ocr-log\');\n    const finalDnaResult = document.getElementById(\'final-dna-result\');\n    const loadToBankBtn = document.getElementById(\'load-to-bank-btn\');\n    const readingMaterial = document.getElementById(\'reading-material\');\n    const generateBtn = document.getElementById(\'generate-btn\');\n    const resultContainer = document.getElementById(\'generated-questions\');\n    const computeLog = document.getElementById(\'compute-log\');\n    const dnaSelectionContainer = document.getElementById(\'dna-selection-container\');\n    const predictCountInput = document.getElementById(\'predict-count\');\n\n    // --- Initialization ---\n    async function init() {\n        apiKeyInput.value = currentApiKey;\n        try {\n            const resp = await fetch(\'questions.json\');\n            if (!resp.ok) throw new Error(`HTTP error! status: ${resp.status}`);\n            problemDNADatabase = await resp.json();\n            renderDNACheckboxes();\n            log(`DNA Bank loaded: ${problemDNADatabase.length} structures ready.`, \'success\', computeLog);\n        } catch (e) {\n            log(`CRITICAL: Failed to load DNA Bank (questions.json). ${e.message}`, \'error\', computeLog);\n        }\n        setupEventListeners();\n    }\n\n    function setupEventListeners() {\n        if (saveKeyBtn) saveKeyBtn.onclick = () => {\n            currentApiKey = apiKeyInput.value;\n            localStorage.setItem(\'groq_api_key\', currentApiKey);\n            log(\'API Key saved.\', \'success\', computeLog);\n        };\n        if (imageUpload) imageUpload.onchange = handleImageUpload;\n        if (fullAutoExtractBtn) fullAutoExtractBtn.onclick = runFullAutomation;\n        if (loadToBankBtn) loadToBankBtn.onclick = loadExtractedDNA;\n        if (generateBtn) generateBtn.onclick = generationPipeline;\n    }\n\n    // --- Core Utilities ---\n    function log(msg, type = \'info\', logElement = ocrLog) {\n        const colorMap = { info: \'#ecf0f1\', error: \'#e74c3c\', success: \'#2ecc71\', ant: \'#3498db\', master: \'#f1c40f\', auditor: \'#f39c12\' };\n        const targetLog = logElement === ocrLog ? ocrLog : computeLog;\n        targetLog.innerHTML += `<span style=\"color: ${colorMap[type]};\">[${type.toUpperCase()}] ${msg}\\n</span>`;\n        targetLog.scrollTop = targetLog.scrollHeight;\n    }\n\n    async function callGroq(prompt, isJson = false) {\n        if (!currentApiKey) {\n            throw new Error(\'Groq API Key is not set.\');\n        }\n        const response = await fetch(API_URL, {\n            method: \'POST\',\n            headers: {\n                \'Authorization\': `Bearer ${currentApiKey}`,\n                \'Content-Type\': \'application/json\'\n            },\n            body: JSON.stringify({\n                messages: [{ role: \'user\', content: prompt }],\n                model: MODEL_NAME,\n                temperature: 0.7,\n                max_tokens: 2048, // Increased for potentially longer DNA\n                top_p: 1,\n                stop: null,\n                stream: false,\n                response_format: isJson ? { type: \'json_object\' } : null,\n            })\n        });\n        if (!response.ok) {\n            const errorData = await response.json();\n            throw new Error(`Groq API Error: ${errorData.error.message}`);\n        }\n        const data = await response.json();\n        return data.choices[0].message.content;\n    }\n\n    // --- DNA EXTRACTION ENGINE (Full-Auto) ---\n    async function runFullAutomation() {\n        log(\'--- MASTER ANT: Full Automation Sequence Initiated ---\', \'master\');\n        fullAutoExtractBtn.disabled = true;\n        fullAutoExtractBtn.innerText = \'Colony is Active...\';\n        ocrLog.innerHTML = \'\';\n\n        try {\n            log(\'[1/4] Starting OCR...\', \'master\');\n            const rawText = await antOcrExtractor();\n            if (!rawText) throw new Error(\'OCR process failed to produce text.\');\n            log(\'OCR extraction successful.\', \'success\');\n\n            log(\'[2/4] Starting Layout Analysis...\', \'master\');\n            const problemBlocks = antLayoutParser(rawText);\n            log(`Layout analysis successful: ${problemBlocks.length} blocks found.`, \'success\');\n\n            log(\'[3/4] Starting Intelligent Analysis & DNA Assembly...\', \'master\');\n            const finalDNAs = [];\n            for (let i = 0; i < problemBlocks.length; i++) {\n                log(`Assembling DNA for block ${i + 1}/${problemBlocks.length}...\', \'ant\');\n                const dna = await antDNAAssembler(problemBlocks[i]);\n                finalDNAs.push(dna);\n            }\n            log(\'DNA assembly successful.\', \'success\');\n\n            finalDnaResult.value = JSON.stringify(finalDNAs, null, 2);\n            log(\'--- MASTER ANT: Automation Complete. Final DNA generated. ---\', \'master\');\n\n        } catch (error) {\n            log(`PIPELINE HALTED: ${error.message}`, \'error\');\n            log(\'ADVICE: Please check image quality, API key, or text format.\', \'master\');\n        } finally {\n            fullAutoExtractBtn.disabled = false;\n            fullAutoExtractBtn.innerText = \'🚀 DNA 자동 추출 (Full Auto)\';\n        }\n    }\n    \n    async function antOcrExtractor() {\n        const file = imageUpload.files[0];\n        if (!file) throw new Error(\'No image uploaded.\');\n        const worker = await Tesseract.createWorker(\'eng+kor\', 1, { logger: m => log(`${m.status} (${(m.progress * 100).toFixed(2)}%)`, \'ant\') });\n        const { data: { text } } = await worker.recognize(file);\n        await worker.terminate();\n        return text;\n    }\n\n    function antLayoutParser(text) {\n        const regex = /(?=\n\d+\. |^\d+\. )/g;\n        const blocks = text.split(regex).filter(block => block.trim() !== \'\');\n        if (blocks.length === 0) throw new Error(\'Layout parser found no problem blocks.\');\n        return blocks;\n    }\n\n    async function antDNAAssembler(problemBlock) {\n        const masterDNA = problemDNADatabase[0]; // Use the first DNA as a template for the structure\n        const uniqueId = `extracted-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;\n\n        const prompt = `You are a super-intelligent DNA assembler ant. Your task is to analyze a given \"Problem Block Text\" and convert it into a structured JSON object. This JSON must strictly follow the format of the provided \"Master DNA Template\". Do not invent new fields. Fill in the values based on your analysis of the problem block. For fields like \'choices\', \'answer\', or if some information isn't available in the block, use a null value. Your output must be only the final JSON object.\n\n--- Master DNA Template ---\n${JSON.stringify(masterDNA, null, 2)}\n\n--- Problem Block Text ---\n\"\"\"\n${problemBlock}\n\"\"\"`;\n\n        const jsonResponse = await callGroq(prompt, true);\n        const generatedDNA = JSON.parse(jsonResponse);\n        \n        // Post-processing to ensure consistency\n        generatedDNA.meta.problem_id = uniqueId;\n        generatedDNA.meta.source = \'auto-extracted\';\n        generatedDNA.content.passage_text = \"(Extracted from image)\"; // Placeholder\n\n        return generatedDNA;\n    }\n\n    function handleImageUpload(event) {\n        const file = event.target.files[0];\n        if (file) {\n            const reader = new FileReader();\n            reader.onload = (e) => { imagePreview.src = e.target.result; };\n            reader.readAsDataURL(file);\n        }\n    }\n\n    function loadExtractedDNA() {\n        const jsonString = finalDnaResult.value;\n        if (!jsonString) { log(\'No extracted DNA to load.\', \'error\'); return; }\n        try {\n            const newDNAs = JSON.parse(jsonString);\n            if (!Array.isArray(newDNAs) || newDNAs.length === 0) throw new Error(\'Parsed data is not a valid DNA array.\');\n            problemDNADatabase.unshift(...newDNAs);\n            renderDNACheckboxes();\n            log(`${newDNAs.length} new DNA strands loaded into the Generator!`, \'success\', computeLog);\n            log(\'New DNA loaded and ready for use.\', \'success\', ocrLog);\n        } catch (error) {\n            log(`Failed to load DNA: ${error.message}.`, \'error\', ocrLog);\n        }\n    }\n\n    function renderDNACheckboxes() {\n        dnaSelectionContainer.innerHTML = \'\';\n        problemDNADatabase.forEach((dna, index) => {\n            const div = document.createElement(\'div\');\n            div.className = \'dna-checkbox-item\';\n            const checkboxId = `dna-${dna.meta.problem_id || index}`;\n            // Updated to use the new data structure from questions.json\n            const title = dna.pedagogy.learning_objective || \'(No learning objective defined)\';\n            const label = `${dna.meta.problem_type} (${dna.meta.sub_skill || \'N/A\'})`;\n            const sub_label = dna.pedagogy.test_intent || \'\';\n            div.innerHTML = `<input type=\"checkbox\" id=\"${checkboxId}\" value=\"${index}\" checked><label for=\"${checkboxId}\" title=\"${title}\"><strong>${label}</strong><small>${sub_label}</small></label>`;\n            dnaSelectionContainer.appendChild(div);\n        });\n    }\n\n    // --- PROBLEM GENERATION FACTORY ---\n    async function generationPipeline() {\n        log(\'--- GENERATOR: Pipeline Initiated ---\', \'master\', computeLog);\n        generateBtn.disabled = true;\n        generateBtn.innerText = \'Working...\';\n        resultContainer.innerHTML = \'\';\n\n        try {\n            const passage = readingMaterial.value;\n            const selectedDNAs = Array.from(document.querySelectorAll(\'.dna-selection-container input:checked\')).map(cb => problemDNADatabase[cb.value]);\n            const generationCount = parseInt(predictCountInput.value, 10);\n            if (!passage || selectedDNAs.length === 0) throw new Error(\'Reading passage and at least one DNA type must be provided.\');\n\n            let finalProducts = [];\n            for (const dna of selectedDNAs) {\n                for(let i=0; i<generationCount; i++) {\n                    log(`[${i+1}/${generationCount}] Generating from DNA: ${dna.meta.problem_type}...\', \'ant\', computeLog);\n                    const finalProduct = await antArchitect(dna, passage);\n                    log(\'Architect Ant: Problem constructed.\', \'ant\', computeLog);\n                    // Note: Crafter and Auditor are currently bypasses, but are kept for future expansion.\n                    const auditPassed = await harnessAuditor(finalProduct, dna, passage);\n                    if(auditPassed) finalProducts.push(finalProduct);\n                }\n            }\n            renderResults(finalProducts);\n        } catch (error) {\n            log(`GENERATOR HALTED: ${error.message}`, \'error\', computeLog);\n        } finally {\n            generateBtn.disabled = false;\n            generateBtn.innerText = \'⚙️ 개미 군집 가동\';\n        }\n    }\n\n    async function antArchitect(dna, passage) {\n        // Use the powerful regeneration prompt from the DNA itself\n        const prompt = dna.generation_dna.regeneration_prompt.replace(\"(The user will provide this)\", `\"\"\"${passage}\"\"\"`);\n        const response = await callGroq(prompt, true); // Assuming the prompt asks for JSON output\n        let generated = JSON.parse(response);\n\n        // The LLM might return the passage inside the JSON, so we ensure the user's passage is what's used.\n        if (generated.content) { // Defensive check\n            generated.content.passage_text = passage;\n        }\n        return generated;\n    }\n\n    async function harnessAuditor(finalProduct, dna, passage) {\n        // Future implementation: Check for quality, factual consistency, etc.\n        log(`Auditor Ant: Reviewing... (Currently set to auto-pass)`, \'auditor\', computeLog);\n        return true; \n    }\n\n    function renderResults(questions) {\n        if (questions.length === 0) {\n            resultContainer.innerHTML = `<p class=\"empty-msg\">No questions were generated successfully. Try different DNA or a clearer passage.</p>`;\n            return;\n        }\n        // The AI now returns a complete structure, so we adapt.\n        resultContainer.innerHTML = questions.map((q_obj, i) => {\n            const q = q_obj.content; // The actual content is nested\n            const optionsHtml = q.choices && Array.isArray(q.choices) ? `<ol type=\"1\">${q.choices.map(opt => `<li>${opt}</li>`).join(\'\')}</ol>` : \'\';\n\n            return `\n                <div class=\"question-card\">\n                    <h4>[문제 ${i + 1}] (${q_obj.meta.problem_type})</h4>\n                    <p><strong>지시문:</strong> ${q.instruction_text || q.question_text}</p>\n                    ${q.passage_text ? `<div class=\"passage-box\">${q.passage_text.replace(/\n/g, '<br>')}</div>` : \'\'}\n                    <p>${q.question_text}</p>\n                    ${optionsHtml}\n                    <details>\n                        <summary>정답 및 해설 보기</summary>\n                        <p><strong>정답:</strong> ${q.answer}</p>\n                        <p><strong>해설:</strong> ${q.explanation}</p>\n                    </details>\n                </div>\n            `;\n        }).join(\'\');\n    }\n\n    init(); // Start the application\n});\n
+
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('Ant Colony v2.0.0 (REBORN) Initialized');
+
+    // --- Configuration ---
+    const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+    const MODEL_NAME = 'llama-3.1-8b-instant';
+    let currentApiKey = localStorage.getItem('groq_api_key') || '';
+    let problemDNADatabase = [];
+
+    // --- DOM Elements (v2.0 Mapping) ---
+    const apiKeyInput = document.getElementById('api-key-input');
+    const saveKeyBtn = document.getElementById('save-key-btn');
+    const imageUpload = document.getElementById('image-upload');
+    const fullAutoExtractBtn = document.getElementById('full-auto-extract-btn');
+    const imagePreview = document.getElementById('image-preview');
+    const ocrLog = document.getElementById('ocr-log');
+    const finalDnaResult = document.getElementById('final-dna-result');
+    const loadToBankBtn = document.getElementById('load-to-bank-btn');
+    const readingMaterial = document.getElementById('reading-material');
+    const generateBtn = document.getElementById('generate-btn');
+    const resultContainer = document.getElementById('generated-questions');
+    const computeLog = document.getElementById('compute-log');
+    const dnaSelectionContainer = document.getElementById('dna-selection-container');
+    const predictCountInput = document.getElementById('predict-count');
+
+    // --- Log Utility ---
+    function log(msg, type = 'info', targetLogElement) {
+        const colorMap = { 
+            info: '#9ab', 
+            error: '#ff6b6b', 
+            success: '#63e6be', 
+            ant: '#5c7cfa', 
+            master: '#fcc419',
+            auditor: '#f06595' 
+        };
+        const logHtml = `<div style="color: ${colorMap[type]};">[${type.toUpperCase()}] ${msg}</div>`;
+        targetLogElement.innerHTML += logHtml;
+        targetLogElement.scrollTop = targetLogElement.scrollHeight;
+    }
+
+    // --- Initialization ---
+    async function init() {
+        if (apiKeyInput) {
+            apiKeyInput.value = currentApiKey;
+        }
+        log('Engine core systems are online.', 'info', ocrLog);
+        log('Awaiting your command.', 'info', computeLog);
+        
+        try {
+            const resp = await fetch('questions.json');
+            if (!resp.ok) throw new Error(`HTTP error! status: ${resp.status}`);
+            problemDNADatabase = await resp.json();
+            renderDNACheckboxes();
+            log(`DNA Bank loaded: ${problemDNADatabase.length} structures ready.`, 'success', computeLog);
+        } catch (e) {
+            log(`CRITICAL: Failed to load DNA Bank (questions.json). ${e.message}`, 'error', computeLog);
+        }
+        setupEventListeners();
+    }
+
+    function setupEventListeners() {
+        if (saveKeyBtn) saveKeyBtn.onclick = () => {
+            currentApiKey = apiKeyInput.value;
+            localStorage.setItem('groq_api_key', currentApiKey);
+            log('API Key has been securely stored in your browser.', 'success', computeLog);
+        };
+        if (imageUpload) imageUpload.onchange = handleImageUpload;
+        if (fullAutoExtractBtn) fullAutoExtractBtn.onclick = runFullAutomation;
+        if (loadToBankBtn) loadToBankBtn.onclick = loadExtractedDNA;
+        if (generateBtn) generateBtn.onclick = generationPipeline;
+    }
+    
+    // --- Groq API Call ---
+    async function callGroq(prompt, isJson = false) {
+        if (!currentApiKey) {
+            throw new Error('Groq API Key is not set. Please save your key in the "Problem Generation Factory".');
+        }
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${currentApiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                messages: [{ role: 'user', content: prompt }],
+                model: MODEL_NAME,
+                temperature: 0.7,
+                max_tokens: 2048,
+                top_p: 1,
+                stop: null,
+                stream: false,
+                response_format: isJson ? { type: 'json_object' } : null,
+            })
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`Groq API Error: ${errorData.error.message}`);
+        }
+        const data = await response.json();
+        return data.choices[0].message.content;
+    }
+
+    // --- DNA EXTRACTION ENGINE (Section 1) ---
+    function handleImageUpload(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => { 
+                imagePreview.src = e.target.result; 
+                imagePreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+            log('Image selected for analysis.', 'info', ocrLog);
+        }
+    }
+
+    async function runFullAutomation() {
+        log('--- MASTER ANT: Full Automation Sequence Initiated ---', 'master', ocrLog);
+        fullAutoExtractBtn.disabled = true;
+        fullAutoExtractBtn.innerText = 'Colony is Active...';
+        ocrLog.innerHTML = ''; // Clear previous logs
+
+        try {
+            const file = imageUpload.files[0];
+            if (!file) throw new Error('No image file uploaded.');
+            
+            log('[1/4] Ant OCR worker dispatched...', 'ant', ocrLog);
+            const worker = await Tesseract.createWorker('eng+kor', 1, { 
+                logger: m => log(`${m.status} (${(m.progress * 100).toFixed(1)}%)`, 'ant', ocrLog) 
+            });
+            const { data: { text } } = await worker.recognize(file);
+            await worker.terminate();
+            log('OCR extraction successful.', 'success', ocrLog);
+
+            log('[2/4] Ant Layout-Parser analyzing text structure...', 'ant', ocrLog);
+            const regex = /(?=\n\d+\. |^\d+\. )/g;
+            const problemBlocks = text.split(regex).filter(block => block.trim() !== '');
+            if (problemBlocks.length === 0) throw new Error('Layout parser found no problem blocks.');
+            log(`Layout analysis successful: ${problemBlocks.length} blocks found.`, 'success', ocrLog);
+
+            log('[3/4] Ant DNA-Assembler creating genetic codes...', 'ant', ocrLog);
+            const finalDNAs = [];
+            const masterDNA = problemDNADatabase[0]; // Use the first DNA as a structural template
+            for (let i = 0; i < problemBlocks.length; i++) {
+                log(`Assembling DNA for block ${i + 1}/${problemBlocks.length}...`, 'ant', ocrLog);
+                const prompt = `You are a super-intelligent DNA assembler ant. Your task is to analyze a given \"Problem Block Text\" and convert it into a structured JSON object. This JSON must strictly follow the format of the provided \"Master DNA Template\". Do not invent new fields. Fill in the values based on your analysis of the problem block. For fields like 'choices', 'answer', or if some information isn't available in the block, use a null value. Your output must be only the final JSON object.\n\n--- Master DNA Template ---\n${JSON.stringify(masterDNA, null, 2)}\n\n--- Problem Block Text ---\n\"\"\"\n${problemBlocks[i]}\n\"\"\"`;
+                const jsonResponse = await callGroq(prompt, true);
+                const generatedDNA = JSON.parse(jsonResponse);
+                generatedDNA.meta.problem_id = `extracted-${Date.now()}-${i}`;
+                generatedDNA.meta.source = 'auto-extracted';
+                generatedDNA.content.passage_text = "(Extracted from image)";
+                finalDNAs.push(generatedDNA);
+            }
+            log('DNA assembly successful.', 'success', ocrLog);
+
+            finalDnaResult.value = JSON.stringify(finalDNAs, null, 2);
+            log('[4/4] --- MASTER ANT: Automation Complete. Final DNA is ready. ---', 'master', ocrLog);
+
+        } catch (error) {
+            log(`PIPELINE HALTED: ${error.message}`, 'error', ocrLog);
+            log('ADVICE: Please check image quality, API key, or text format.', 'master', ocrLog);
+        } finally {
+            fullAutoExtractBtn.disabled = false;
+            fullAutoExtractBtn.innerText = '🚀 DNA 자동 추출 (Full Auto)';
+        }
+    }
+
+    function loadExtractedDNA() {
+        const jsonString = finalDnaResult.value;
+        if (!jsonString) {
+            log('No extracted DNA to load. Extract DNA from an image first.', 'error', computeLog);
+            return;
+        }
+        try {
+            // It might be a single object or an array, so we standardize it to an array.
+            const parsed = JSON.parse(jsonString);
+            const newDNAs = Array.isArray(parsed) ? parsed : [parsed];
+
+            if (newDNAs.length === 0) throw new Error('Parsed data is empty.');
+            
+            // Add to the main database and re-render the selection UI
+            problemDNADatabase.unshift(...newDNAs);
+            renderDNACheckboxes();
+            
+            log(`${newDNAs.length} new DNA strand(s) loaded into the Generator!`, 'success', computeLog);
+            
+            // Also, for convenience, load the first extracted passage into the text area
+            if(newDNAs[0].content && newDNAs[0].content.passage_text && newDNAs[0].content.passage_text !== "(Extracted from image)") {
+                readingMaterial.value = newDNAs[0].content.passage_text;
+                log('Loaded first passage into the text area.', 'info', computeLog);
+            }
+        } catch (error) {
+            log(`Failed to load DNA: ${error.message}. Make sure it's valid JSON.`, 'error', computeLog);
+        }
+    }
+
+    // --- PROBLEM GENERATION FACTORY (Section 2) ---
+    function renderDNACheckboxes() {
+        dnaSelectionContainer.innerHTML = '';
+        if (problemDNADatabase.length === 0) {
+            dnaSelectionContainer.innerHTML = '<p style="color: #888;">No DNA found. Load from questions.json or extract from an image.</p>';
+            return;
+        }
+        problemDNADatabase.forEach((dna, index) => {
+            const div = document.createElement('div');
+            const checkboxId = `dna-${dna.meta.problem_id || index}`;
+            const title = dna.pedagogy.learning_objective || '(No learning objective)';
+            const label = `${dna.meta.problem_type} (${dna.meta.sub_skill || 'N/A'})`;
+            
+            div.innerHTML = `
+                <label for="${checkboxId}" title="${title}" style="display: block; margin-bottom: 5px; background: #f7f7f7; padding: 5px; border-radius: 3px;">
+                    <input type="checkbox" id="${checkboxId}" value="${index}" checked>
+                    <strong>${label}</strong>
+                    <small style="display:block; color: #777;">${dna.pedagogy.test_intent || ''}</small>
+                </label>`;
+            dnaSelectionContainer.appendChild(div);
+        });
+    }
+
+    async function generationPipeline() {
+        log('--- GENERATOR: Pipeline Initiated ---', 'master', computeLog);
+        generateBtn.disabled = true;
+        generateBtn.innerText = 'Working...';
+        resultContainer.innerHTML = '';
+
+        try {
+            const passage = readingMaterial.value;
+            const selectedDNAs = Array.from(dnaSelectionContainer.querySelectorAll('input:checked')).map(cb => problemDNADatabase[cb.value]);
+            const generationCount = parseInt(predictCountInput.value, 10);
+            if (!passage || selectedDNAs.length === 0) throw new Error('Reading passage and at least one DNA type must be provided.');
+
+            let finalProducts = [];
+            for (const dna of selectedDNAs) {
+                for (let i = 0; i < generationCount; i++) {
+                    log(`[${i + 1}/${generationCount}] Generating from DNA: ${dna.meta.problem_type}...`, 'ant', computeLog);
+                    const finalProduct = await antArchitect(dna, passage);
+                    log('Architect Ant: Problem constructed.', 'ant', computeLog);
+                    const auditPassed = await harnessAuditor(finalProduct);
+                    if (auditPassed) finalProducts.push(finalProduct);
+                }
+            }
+            renderResults(finalProducts);
+            log('--- GENERATOR: Pipeline Complete ---', 'master', computeLog);
+        } catch (error) {
+            log(`GENERATOR HALTED: ${error.message}`, 'error', computeLog);
+        } finally {
+            generateBtn.disabled = false;
+            generateBtn.innerText = '⚙️ 개미 군집 가동 (문제 생성)';
+        }
+    }
+
+    async function antArchitect(dna, passage) {
+        const prompt = dna.generation_dna.regeneration_prompt.replace("(The user will provide this)", `\"\"\"\n${passage}\n\"\"\"`);
+        const response = await callGroq(prompt, true);
+        let generated = JSON.parse(response);
+        if (generated.content) {
+            generated.content.passage_text = passage;
+        }
+        return generated;
+    }
+
+    async function harnessAuditor(finalProduct) {
+        log('Auditor Ant: Reviewing... (Currently set to auto-pass)', 'auditor', computeLog);
+        return true;
+    }
+
+    function renderResults(questions) {
+        if (questions.length === 0) {
+            resultContainer.innerHTML = `<div class="question-card" style="border-left-color: var(--warning-color);"><p>No questions were generated successfully. Try different DNA or a clearer passage.</p></div>`;
+            return;
+        }
+        resultContainer.innerHTML = questions.map((q_obj, i) => {
+            const q = q_obj.content;
+            const meta = q_obj.meta;
+            const optionsHtml = q.choices && Array.isArray(q.choices) 
+                ? `<ol type="1" style="padding-left: 20px;">${q.choices.map(opt => `<li>${opt}</li>`).join('')}</ol>` 
+                : '';
+
+            return `
+                <div class="question-card">
+                    <h4>[문제 ${i + 1}] (${meta.problem_type})</h4>
+                    ${q.instruction_text ? `<p><strong>지시문:</strong> ${q.instruction_text}</p>`: ''}
+                    ${q.passage_text && q.passage_text.length > 10 ? `<div style="border: 1px solid #eee; padding: 10px; margin: 10px 0; border-radius: 5px; background: #fafafa;">${q.passage_text.replace(/\n/g, '<br>')}</div>` : ''}
+                    <p>${q.question_text}</p>
+                    ${optionsHtml}
+                    <details style="margin-top: 10px;">
+                        <summary style="cursor: pointer; font-weight: 600;">정답 및 해설 보기</summary>
+                        <div style="padding: 10px; border: 1px solid #eee; margin-top: 5px; border-radius: 5px;">
+                            <p><strong>정답:</strong> ${q.answer}</p>
+                            <p><strong>해설:</strong> ${q.explanation}</p>
+                        </div>
+                    </details>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // --- Add back the API key section that was accidentally removed ---
+    const problemGeneratorSection = document.getElementById('problem-generator');
+    const apiKeySection = document.createElement('div');
+    apiKeySection.className = 'form-group';
+    apiKeySection.innerHTML = `
+        <label for="api-key-input" style="display:flex; align-items:center; gap: 5px;">
+            Groq API Key 🔑
+            <small>(Required for all AI functions)</small>
+        </label>
+        <div style="display: flex; gap: 10px;">
+            <input type="password" id="api-key-input" placeholder="gsk_..." style="flex-grow: 1;">
+            <button id="save-key-btn" class="btn btn-secondary" style="background-color: #6c757d; padding: 0.5rem 1rem;">Save</button>
+        </div>
+    `;
+    // Prepend it to the generator section
+    problemGeneratorSection.prepend(apiKeySection);
+    
+    // Now that the elements are in the DOM, re-assign them and call init
+    document.getElementById('save-key-btn').onclick = () => {
+        currentApiKey = document.getElementById('api-key-input').value;
+        localStorage.setItem('groq_api_key', currentApiKey);
+        log('API Key has been securely stored in your browser.', 'success', computeLog);
+        document.getElementById('api-key-input').style.borderColor = 'green';
+    };
+     document.getElementById('api-key-input').value = currentApiKey;
+
+
+    init(); // Start the application
+});
