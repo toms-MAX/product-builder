@@ -1,14 +1,19 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Ant Colony v2.0.1 (REBORN-STABLE) Initialized');
+    console.log('Ant Colony v2.0.2 (ULTRA-STABLE) Initialized');
 
     // --- Configuration ---
     const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
     const MODEL_NAME = 'llama-3.1-8b-instant';
+    const RATE_LIMIT_DELAY = 1000; // 1 second delay between generations
     let currentApiKey = localStorage.getItem('groq_api_key') || '';
     let problemDNADatabase = [];
 
+    // --- Utility to introduce delay ---
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
     // --- DOM Elements (v2.0 Mapping) ---
+    // ... (DOM elements remain the same, so they are omitted for brevity) ...
     const apiKeyInput = document.getElementById('api-key-input');
     const saveKeyBtn = document.getElementById('save-key-btn');
     const imageUpload = document.getElementById('image-upload');
@@ -23,6 +28,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const computeLog = document.getElementById('compute-log');
     const dnaSelectionContainer = document.getElementById('dna-selection-container');
     const predictCountInput = document.getElementById('predict-count');
+
 
     // --- Log Utility ---
     function log(msg, type = 'info', targetLogElement) {
@@ -41,9 +47,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- Initialization ---
     async function init() {
-        if (apiKeyInput) {
-            apiKeyInput.value = currentApiKey;
-        }
         log('Engine core systems are online.', 'info', ocrLog);
         log('Awaiting your command.', 'info', computeLog);
         
@@ -60,7 +63,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function setupEventListeners() {
-        // The API Key section is now dynamically added, so we need to ensure these are not null
         const dynamicApiKeyInput = document.getElementById('api-key-input');
         const dynamicSaveKeyBtn = document.getElementById('save-key-btn');
 
@@ -111,6 +113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // --- DNA EXTRACTION ENGINE (Section 1) ---
+    // ... (This section remains the same, so it's omitted for brevity) ...
     function handleImageUpload(event) {
         const file = event.target.files[0];
         if (file) {
@@ -150,17 +153,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             log('[3/4] Ant DNA-Assembler creating genetic codes...', 'ant', ocrLog);
             const finalDNAs = [];
-            const masterDNA = problemDNADatabase[0]; // Use the first DNA as a structural template
+            const masterDNA = problemDNADatabase[0]; 
             for (let i = 0; i < problemBlocks.length; i++) {
                 log(`Assembling DNA for block ${i + 1}/${problemBlocks.length}...`, 'ant', ocrLog);
                 let prompt = `You are a super-intelligent DNA assembler ant. Your task is to analyze a given \"Problem Block Text\" and convert it into a structured JSON object. This JSON must strictly follow the format of the provided \"Master DNA Template\". Do not invent new fields. Fill in the values based on your analysis of the problem block. For fields like 'choices', 'answer', or if some information isn't available in the block, use a null value. Your output must be only the final JSON object.\n\n--- Master DNA Template ---\n${JSON.stringify(masterDNA, null, 2)}\n\n--- Problem Block Text ---\n\"\"\"\n${problemBlocks[i]}\n\"\"\"`;
                 prompt += "\n\nYour final output must be a single, valid JSON object.";
                 const jsonResponse = await callGroq(prompt, true);
-                const generatedDNA = JSON.parse(jsonResponse);
+                let generatedDNA = JSON.parse(jsonResponse);
+                 // Data Standardization
+                if (!generatedDNA.content) {
+                    log('Assembler Ant: Detected non-standard format. Standardizing now.', 'ant', ocrLog);
+                    generatedDNA = { content: generatedDNA };
+                }
                 generatedDNA.meta.problem_id = `extracted-${Date.now()}-${i}`;
                 generatedDNA.meta.source = 'auto-extracted';
                 generatedDNA.content.passage_text = "(Extracted from image)";
                 finalDNAs.push(generatedDNA);
+                await sleep(RATE_LIMIT_DELAY);
             }
             log('DNA assembly successful.', 'success', ocrLog);
 
@@ -175,8 +184,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             fullAutoExtractBtn.innerText = '🚀 DNA 자동 추출 (Full Auto)';
         }
     }
-
-    function loadExtractedDNA() {
+     function loadExtractedDNA() {
         const jsonString = finalDnaResult.value;
         if (!jsonString) {
             log('No extracted DNA to load. Extract DNA from an image first.', 'error', computeLog);
@@ -245,6 +253,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     log('Architect Ant: Problem constructed.', 'ant', computeLog);
                     const auditPassed = await harnessAuditor(finalProduct);
                     if (auditPassed) finalProducts.push(finalProduct);
+                     // Apply rate limiting
+                    if ((i + 1) < generationCount || selectedDNAs.indexOf(dna) < selectedDNAs.length - 1) {
+                        log(`Pacing... waiting ${RATE_LIMIT_DELAY / 1000}s to avoid rate limits.`, 'info', computeLog);
+                        await sleep(RATE_LIMIT_DELAY);
+                    }
                 }
             }
             renderResults(finalProducts);
@@ -259,11 +272,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function antArchitect(dna, passage) {
         let prompt = dna.generation_dna.regeneration_prompt.replace("(The user will provide this)", `\"\"\"\n${passage}\n\"\"\"`);
-        // Rule Enforcement: Ensure the API knows we expect JSON, preventing the common error.
         prompt += "\n\nYour final output must be a single, valid JSON object, and nothing else.";
         
         const response = await callGroq(prompt, true);
         let generated = JSON.parse(response);
+
+        // **CRITICAL FIX**: Standardize the AI's output.
+        // If the AI returns the content directly, wrap it in the expected 'content' object.
+        if (!generated.content) {
+            log('Architect Ant: AI output is non-standard. Performing emergency standardization.', 'ant', computeLog);
+            const standardized = {
+                "meta": dna.meta, // Carry over the original metadata
+                "pedagogy": dna.pedagogy, // Carry over the original pedagogy
+                "content": generated, // Wrap the direct output
+                "generation_dna": dna.generation_dna // Carry over generation info
+            };
+            // Ensure the standardized content has the passage text.
+            if (standardized.content) {
+                 standardized.content.passage_text = passage;
+            }
+            return standardized;
+        }
+
+        // If the output was standard, just ensure passage text is correct.
         if (generated.content) {
             generated.content.passage_text = passage;
         }
@@ -271,16 +302,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function harnessAuditor(finalProduct) {
-        log('Auditor Ant: Reviewing... (Currently set to auto-pass)', 'auditor', computeLog);
+        // **ENHANCED AUDIT**: Basic structural check.
+        if (!finalProduct || !finalProduct.content || !finalProduct.content.question_text || !finalProduct.content.answer) {
+             log('Auditor Ant: Review FAILED. Product has critical structural flaws.', 'auditor', computeLog);
+            return false;
+        }
+        log('Auditor Ant: Review PASSED. (Basic structure appears valid).', 'auditor', computeLog);
         return true;
     }
 
     function renderResults(questions) {
         if (questions.length === 0) {
-            resultContainer.innerHTML = `<div class="question-card" style="border-left-color: var(--warning-color);"><p>No questions were generated successfully. Try different DNA or a clearer passage.</p></div>`;
+            resultContainer.innerHTML = `<div class="question-card" style="border-left-color: var(--warning-color);"><p>No questions were generated successfully. The colony failed to produce valid results. Check logs for errors.</p></div>`;
             return;
         }
         resultContainer.innerHTML = questions.map((q_obj, i) => {
+            // **DEFENSIVE RENDERING**: Ensure q_obj and its properties exist before trying to render.
+            if (!q_obj || !q_obj.content || !q_obj.meta) {
+                return `<div class="question-card" style="border-left-color: var(--error-color);"><p><strong>[Render Error]</strong> Problem ${i+1} has a corrupted data structure.</p></div>`;
+            }
             const q = q_obj.content;
             const meta = q_obj.meta;
             const optionsHtml = q.choices && Array.isArray(q.choices) 
@@ -289,16 +329,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             return `
                 <div class="question-card">
-                    <h4>[문제 ${i + 1}] (${meta.problem_type})</h4>
+                    <h4>[문제 ${i + 1}] (${meta.problem_type || 'N/A'})</h4>
                     ${q.instruction_text ? `<p><strong>지시문:</strong> ${q.instruction_text}</p>`: ''}
                     ${q.passage_text && q.passage_text.length > 10 ? `<div style="border: 1px solid #eee; padding: 10px; margin: 10px 0; border-radius: 5px; background: #fafafa;">${q.passage_text.replace(/\n/g, '<br>')}</div>` : ''}
-                    <p>${q.question_text}</p>
+                    <p>${q.question_text || '(Missing Question Text)'}</p>
                     ${optionsHtml}
                     <details style="margin-top: 10px;">
                         <summary style="cursor: pointer; font-weight: 600;">정답 및 해설 보기</summary>
                         <div style="padding: 10px; border: 1px solid #eee; margin-top: 5px; border-radius: 5px;">
-                            <p><strong>정답:</strong> ${q.answer}</p>
-                            <p><strong>해설:</strong> ${q.explanation}</p>
+                            <p><strong>정답:</strong> ${q.answer || '(No Answer Provided)'}</p>
+                            <p><strong>해설:</strong> ${q.explanation || '(No Explanation Provided)'}</p>
                         </div>
                     </details>
                 </div>
@@ -307,7 +347,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // --- Dynamic UI Injection ---
-    // Inject the API key input field into the DOM, because it's critical.
     const problemGeneratorSection = document.getElementById('problem-generator');
     if (problemGeneratorSection && !document.getElementById('api-key-input')) {
         const apiKeySection = document.createElement('div');
