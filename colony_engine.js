@@ -6,7 +6,7 @@
  *   - Drag & drop file input
  */
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('[Ant Colony v2.3] Multi-Ant Pipeline Online');
+    console.log('[Ant Colony v2.4] Multi-Ant Pipeline Online');
 
     // PDF.js worker setup
     if (typeof pdfjsLib !== 'undefined') {
@@ -53,6 +53,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const resultContainer   = $('generated-questions');
     const apiCallCounter    = $('api-call-counter');
     const customInstruction = $('custom-instruction');
+    const passageList       = $('passage-list');
+    const addPassageBtn     = $('add-passage-btn');
+    const pdfBtn            = $('pdf-btn');
+
+    let allResults = []; // store last generation for PDF export
 
     let totalApiCalls = 0;
 
@@ -201,6 +206,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (learnBtn)      learnBtn.onclick       = runLearningPipeline;
         if (loadToBankBtn) loadToBankBtn.onclick  = loadLearnedDNAs;
         if (generateBtn)   generateBtn.onclick    = runGenerationPipeline;
+        if (addPassageBtn) addPassageBtn.onclick  = addPassageItem;
+        if (pdfBtn)        pdfBtn.onclick         = exportToPDF;
+
+        // Init first passage slot
+        addPassageItem();
 
         // ── Drop Zone ────────────────────────────────────
         if (dropZone) {
@@ -300,6 +310,44 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             log(`PDF 미리보기 오류: ${e.message}`, 'warn', ocrLog);
         }
+    }
+
+    // ── Multiple Passage Management ───────────────────────
+    let passageCount = 0;
+
+    function addPassageItem() {
+        if (!passageList) return;
+        passageCount++;
+        const idx = passageCount;
+        const item = document.createElement('div');
+        item.className = 'passage-item';
+        item.dataset.idx = idx;
+        item.innerHTML = `
+            <div class="passage-item-header">
+                <span class="passage-badge">지문 ${idx}</span>
+                <button class="remove-passage-btn" title="삭제">×</button>
+            </div>
+            <textarea class="passage-textarea" placeholder="영어 지문을 여기에 입력하거나 붙여넣기 하세요..."></textarea>`;
+        item.querySelector('.remove-passage-btn').onclick = () => {
+            if (passageList.children.length > 1) {
+                item.remove();
+                renumberPassages();
+            }
+        };
+        passageList.appendChild(item);
+    }
+
+    function renumberPassages() {
+        Array.from(passageList.children).forEach((item, i) => {
+            const badge = item.querySelector('.passage-badge');
+            if (badge) badge.textContent = `지문 ${i + 1}`;
+        });
+    }
+
+    function getPassages() {
+        return Array.from(passageList?.querySelectorAll('.passage-textarea') || [])
+            .map(ta => ta.value.trim())
+            .filter(Boolean);
     }
 
     // =====================================================
@@ -544,52 +592,73 @@ ${text.substring(0, 1000)}
         setBtn(generateBtn, false, '🐜 생성 중...');
 
         try {
-            const passage = passageArea?.value?.trim();
-            if (!passage) throw new Error('영어 지문을 입력해주세요.');
+            const passages = getPassages();
+            if (passages.length === 0) throw new Error('영어 지문을 하나 이상 입력해주세요.');
 
             const checkedInputs = dnaContainer?.querySelectorAll('input:checked') || [];
             const selectedDNAs = Array.from(checkedInputs).map(cb => dnaBank[parseInt(cb.value)]);
             if (selectedDNAs.length === 0) throw new Error('문제 유형을 하나 이상 선택해주세요.');
 
-            const count = Math.min(parseInt(countInput?.value || 1, 10), 5);
+            const count    = Math.min(parseInt(countInput?.value || 1, 10), 5);
+            const userOrder = customInstruction?.value?.trim() || '';
 
-            log(`── 마스터 개미: 파이프라인 시작 (${selectedDNAs.length}유형 × ${count}문항) ──`, 'master', genLog);
-
-            // ── Ant 1: Analyze passage ONCE (shared) ────────
-            log('[분석] 지문 분석 개미 투입...', 'ant', genLog);
-            const analysis = await passageAnalyzerAnt(passage);
-            log(`지문 분석 완료 → 주제: ${analysis.topic_ko || '분석됨'}`, 'success', genLog);
-            await sleep(DELAY_MS);
+            log(`── 마스터 개미: 파이프라인 시작 (지문 ${passages.length}개 × ${selectedDNAs.length}유형 × ${count}문항) ──`, 'master', genLog);
 
             const results = [];
 
-            for (const dna of selectedDNAs) {
-                for (let i = 0; i < count; i++) {
-                    const label = dna.meta.question_type_ko || dna.meta.problem_type;
-                    log(`[생성] "${label}" (${i + 1}/${count}) 생성 중...`, 'ant', genLog);
+            for (let pi = 0; pi < passages.length; pi++) {
+                const passage = passages[pi];
+                log(`\n[지문 ${pi + 1}/${passages.length}] 분석 개미 투입...`, 'ant', genLog);
+                const analysis = await passageAnalyzerAnt(passage);
+                log(`  주제: ${analysis.topic_ko || '분석됨'}`, 'success', genLog);
+                await sleep(DELAY_MS);
 
-                    try {
-                        // ── Ant 2: Generate (plan+build combined) ────
-                        const userOrder = customInstruction?.value?.trim() || '';
-                        const built = await questionGeneratorAnt(dna, passage, analysis, userOrder);
-                        await sleep(DELAY_MS);
+                for (const dna of selectedDNAs) {
+                    for (let i = 0; i < count; i++) {
+                        const label = dna.meta.question_type_ko || dna.meta.problem_type;
+                        log(`[생성] 지문${pi + 1} × "${label}" (${i + 1}/${count})...`, 'ant', genLog);
 
-                        // ── Ant 3: Audit ──────────────────────────────
-                        const assembled = assembleQuestion(dna, passage, built);
-                        if (auditAnt(assembled, genLog)) {
+                        try {
+                            // ── Ant 2: Generate ──────────────────────────
+                            let built = await questionGeneratorAnt(dna, passage, analysis, userOrder);
+                            await sleep(DELAY_MS);
+
+                            // ── Ant 3: Structural audit ──────────────────
+                            let assembled = assembleQuestion(dna, passage, built);
+                            if (!auditAnt(assembled, genLog)) {
+                                log(`  └ ✗ 구조 감사 실패. 스킵.`, 'auditor', genLog);
+                                continue;
+                            }
+
+                            // ── Ant 4: Format validation ─────────────────
+                            const validation = formatValidator(assembled, dna);
+                            assembled.validation = validation;
+
+                            if (!validation.passed) {
+                                log(`  └ ⚠ 형식 불일치 (${validation.score}점): ${validation.issues.join(', ')}`, 'auditor', genLog);
+                                log(`  └ 형식 맞춤 재시도 중...`, 'ant', genLog);
+                                await sleep(DELAY_MS);
+                                built = await questionGeneratorAnt(dna, passage, analysis,
+                                    userOrder + ' IMPORTANT: Follow the question_template format EXACTLY. Use the exact instruction line provided.');
+                                assembled = assembleQuestion(dna, passage, built);
+                                assembled.validation = formatValidator(assembled, dna);
+                            }
+
+                            assembled.passageIndex = pi + 1;
                             results.push(assembled);
-                            log(`  └ ✓ 감사 통과`, 'auditor', genLog);
-                        } else {
-                            log(`  └ ✗ 감사 실패. 스킵.`, 'auditor', genLog);
-                        }
+                            const v = assembled.validation;
+                            log(`  └ ✓ 완료 (형식 점수: ${v.score}점)`, v.passed ? 'success' : 'auditor', genLog);
 
-                    } catch (e) {
-                        log(`  └ 오류: ${e.message}`, 'error', genLog);
+                        } catch (e) {
+                            log(`  └ 오류: ${e.message}`, 'error', genLog);
+                        }
                     }
                 }
             }
 
+            allResults = results;
             renderResults(results);
+            if (pdfBtn) pdfBtn.style.display = results.length > 0 ? 'flex' : 'none';
             log(`── 마스터 개미: 완료! ${results.length}개 문제 생성 (총 API ${totalApiCalls}회 호출) ──`, 'master', genLog);
 
         } catch (err) {
@@ -824,6 +893,166 @@ ${isGrammar ? '"underlined_parts": array of exactly 5 English phrases from the p
         return true;
     }
 
+    // ── Format Validator (rule-based, no API call) ────────
+    // Scores the generated question against the source DNA pattern
+    function formatValidator(question, dna) {
+        const c = question?.content;
+        const p = dna?.pattern;
+        const issues = [];
+        let score = 100;
+
+        // 1. Instruction line match
+        if (p.instruction && c.instruction_text) {
+            const overlap = longestOverlap(p.instruction, c.instruction_text);
+            if (overlap / p.instruction.length < 0.5) {
+                issues.push('지시문 형식 불일치');
+                score -= 20;
+            }
+        }
+
+        // 2. Question text follows template keywords
+        if (p.question_template && c.question_text) {
+            const korWords = p.question_template.match(/[가-힣]{2,}/g) || [];
+            const matched  = korWords.filter(w => c.question_text.includes(w)).length;
+            const rate     = matched / Math.max(korWords.length, 1);
+            if (rate < 0.35) {
+                issues.push('질문 형식이 템플릿과 다름');
+                score -= 25;
+            }
+        }
+
+        // 3. Passage markup applied (for types that need it)
+        const needsMark = ['underlined_phrase', 'blank_in_passage', 'grammar_error'];
+        if (needsMark.includes(p.target)) {
+            if (c.passage_display === c.passage_text) {
+                issues.push('지문 마킹 미적용');
+                score -= 20;
+            }
+        }
+
+        // 4. Choice count
+        if (p.format === 'multiple_choice') {
+            const expected = p.choice_count || 5;
+            const actual   = c.choices?.length || 0;
+            if (actual < expected - 1) {
+                issues.push(`선택지 수 부족 (필요 ${expected}개, 실제 ${actual}개)`);
+                score -= 20;
+            }
+        }
+
+        // 5. Answer present
+        if (!c.answer || String(c.answer).trim().length < 1) {
+            issues.push('답안 없음');
+            score -= 15;
+        }
+
+        return { passed: score >= 65, score: Math.max(0, score), issues };
+    }
+
+    function longestOverlap(a, b) {
+        let count = 0;
+        for (const ch of a) { if (b.includes(ch)) count++; }
+        return count;
+    }
+
+    // ── PDF Export ────────────────────────────────────────
+    async function exportToPDF() {
+        if (!allResults.length) return;
+        setBtn(pdfBtn, false, '📄 PDF 생성 중...');
+
+        try {
+            // Build clean exam-paper HTML
+            const examHTML = buildExamHTML(allResults);
+
+            // Render in off-screen div
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'position:fixed; top:0; left:0; width:794px; background:#fff; z-index:-9999; padding:40px; font-family:sans-serif; font-size:13px; line-height:1.7; color:#111;';
+            wrapper.innerHTML = examHTML;
+            document.body.appendChild(wrapper);
+
+            await sleep(200); // let fonts render
+
+            const canvas = await html2canvas(wrapper, { scale: 2, useCORS: true, backgroundColor: '#fff' });
+            document.body.removeChild(wrapper);
+
+            const { jsPDF } = window.jspdf;
+            const doc       = new jsPDF('p', 'mm', 'a4');
+            const pageW     = doc.internal.pageSize.getWidth();
+            const pageH     = doc.internal.pageSize.getHeight();
+            const imgW      = pageW;
+            const imgH      = (canvas.height * imgW) / canvas.width;
+
+            let posY = 0;
+            let page = 0;
+            while (posY < imgH) {
+                if (page > 0) doc.addPage();
+                doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, -posY, imgW, imgH);
+                posY += pageH;
+                page++;
+            }
+
+            doc.save('exam_questions.pdf');
+            log('PDF 저장 완료!', 'success', genLog);
+        } catch (e) {
+            log(`PDF 생성 오류: ${e.message}`, 'error', genLog);
+        } finally {
+            setBtn(pdfBtn, true, '📄 시험지 PDF로 저장');
+        }
+    }
+
+    function buildExamHTML(questions) {
+        const grouped = {};
+        questions.forEach(q => {
+            const key = `지문 ${q.passageIndex || 1}`;
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(q);
+        });
+
+        let qNum = 1;
+        let html = `<div style="text-align:center; border-bottom:2px solid #000; padding-bottom:12px; margin-bottom:20px;">
+            <h2 style="margin:0; font-size:18px;">영어 시험지</h2>
+            <p style="margin:4px 0 0; font-size:12px; color:#555;">Ant Colony Exam Engine · ${new Date().toLocaleDateString('ko-KR')}</p>
+        </div>`;
+
+        for (const [passageKey, qs] of Object.entries(grouped)) {
+            const passage = qs[0]?.content?.passage_text || '';
+            html += `<div style="margin-bottom:24px;">
+                <p style="font-weight:700; margin:0 0 6px; font-size:12px; color:#555;">[${passageKey}] 다음 글을 읽고 물음에 답하시오.</p>
+                <div style="border:1px solid #ccc; border-radius:4px; padding:12px 14px; background:#fafafa; margin-bottom:14px; white-space:pre-wrap; font-size:12px; line-height:1.8;">
+                    ${passage.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+                </div>`;
+
+            qs.forEach(q => {
+                const c = q.content;
+                const type = q.meta?.question_type_ko || '';
+                const choicesHtml = c.choices?.map((opt, i) => {
+                    const nums = ['①', '②', '③', '④', '⑤'];
+                    return `<p style="margin:3px 0;">${nums[i] || (i + 1) + '.'} ${opt}</p>`;
+                }).join('') || '';
+
+                html += `<div style="margin-bottom:18px; page-break-inside:avoid;">
+                    <p style="margin:0 0 4px; font-weight:700;">${qNum}. (${type})</p>
+                    <p style="margin:0 0 6px;">${c.question_text || ''}</p>
+                    ${choicesHtml}
+                </div>`;
+                qNum++;
+            });
+
+            html += `</div>`;
+        }
+
+        // Answer key
+        html += `<div style="border-top:2px solid #000; margin-top:30px; padding-top:12px;">
+            <p style="font-weight:700; margin:0 0 8px;">정답</p>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">`;
+        questions.forEach((q, i) => {
+            html += `<span style="font-size:12px; padding:2px 8px; border:1px solid #ccc; border-radius:4px;">${i + 1}번: ${q.content.answer || '-'}</span>`;
+        });
+        html += `</div></div>`;
+
+        return html;
+    }
+
     // =====================================================
     // RENDER
     // =====================================================
@@ -874,14 +1103,24 @@ ${isGrammar ? '"underlined_parts": array of exactly 5 English phrases from the p
                 ? `<ol class="choices-list">${q.choices.map(opt => `<li>${opt}</li>`).join('')}</ol>`
                 : '';
 
+            const v = qObj.validation;
+            const vBadgeClass = !v ? '' : v.passed ? 'format-pass' : v.score >= 45 ? 'format-warn' : 'format-fail';
+            const vBadgeText  = !v ? '' : `형식 ${v.score}점`;
+            const vIssues     = v && v.issues.length ? `<p class="format-issues">⚠ ${v.issues.join(' · ')}</p>` : '';
+            const passageLabelHtml = qObj.passageIndex
+                ? `<span style="font-size:0.72rem; color:var(--muted);">지문 ${qObj.passageIndex}</span>` : '';
+
             const card = document.createElement('div');
             card.className = 'question-card';
             card.innerHTML = `
                 <div class="question-header">
                     <span class="q-num">문제 ${i + 1}</span>
+                    ${passageLabelHtml}
                     <span class="q-type-badge">${typeLabel}</span>
+                    ${v ? `<span class="format-badge ${vBadgeClass}">${vBadgeText}</span>` : ''}
                     <button class="copy-btn" title="클립보드에 복사">복사</button>
                 </div>
+                ${vIssues}
                 ${q.instruction_text ? `<p class="q-instruction">${q.instruction_text}</p>` : ''}
                 <div class="passage-box">${(q.passage_display || q.passage_text || '').replace(/\n/g, '<br>')}</div>
                 <p class="q-text">${q.question_text}</p>
