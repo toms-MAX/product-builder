@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ant Colony - Exam Engine v2.4</title>
+    <title>Ant Colony - Exam Engine v2.5</title>
 
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -597,14 +597,236 @@
         }
 
         /* ── Print / PDF styles ──────────────────────── */
+        /* ── Cart Section ────────────────────────────── */
+        .cart-section {
+            max-width: 1440px;
+            margin: 0 auto 2rem;
+            padding: 0 1.5rem;
+        }
+        .cart-panel {
+            background: var(--panel);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+        .cart-header {
+            background: var(--dark);
+            color: #fff;
+            padding: 0.85rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .cart-header h3 { margin: 0; font-size: 0.95rem; font-weight: 700; }
+        .cart-count-badge {
+            background: var(--blue);
+            color: #fff;
+            font-size: 0.72rem;
+            font-weight: 800;
+            border-radius: 999px;
+            padding: 2px 10px;
+        }
+        .cart-header-actions { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; }
+        .btn-ghost {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.3);
+            color: #fff;
+            padding: 0.35rem 0.9rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-ghost:hover { background: rgba(255,255,255,0.1); }
+        .btn-preview {
+            background: var(--blue);
+            color: #fff;
+            border: none;
+            padding: 0.4rem 1rem;
+            font-size: 0.85rem;
+            font-weight: 700;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-preview:hover { background: #3a7de0; }
+
+        #cart-list {
+            padding: 1rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            min-height: 60px;
+        }
+        .cart-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0.75rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+        }
+        .cart-num {
+            font-weight: 800;
+            color: var(--blue);
+            font-size: 0.95rem;
+            min-width: 24px;
+        }
+        .cart-item-info {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            overflow: hidden;
+        }
+        .cart-q-preview {
+            font-size: 0.82rem;
+            color: var(--muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .cart-remove-btn {
+            border: none;
+            background: none;
+            color: var(--muted);
+            font-size: 1.1rem;
+            cursor: pointer;
+            padding: 0 4px;
+            flex-shrink: 0;
+        }
+        .cart-remove-btn:hover { color: var(--red); }
+
+        /* "담기" button on question cards */
+        .add-to-cart-btn {
+            margin-left: auto;
+            padding: 0.25rem 0.8rem;
+            font-size: 0.78rem;
+            font-weight: 700;
+            background: #edf4ff;
+            color: var(--blue);
+            border: 1px solid var(--blue);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .add-to-cart-btn:hover  { background: var(--blue); color: #fff; }
+        .add-to-cart-btn.added  { background: var(--green); color: #fff; border-color: var(--green); }
+
+        /* ── Preview Modal ────────────────────────────── */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            z-index: 2000;
+            padding: 24px 16px;
+            overflow-y: auto;
+        }
+        .modal-box {
+            background: #fff;
+            border-radius: var(--radius);
+            width: 100%;
+            max-width: 860px;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.35);
+            margin-bottom: 24px;
+        }
+        .modal-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.9rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: #fff;
+            z-index: 10;
+            border-radius: var(--radius) var(--radius) 0 0;
+        }
+        .modal-header h3 { margin: 0; font-size: 1rem; font-weight: 700; flex: 1; }
+        .modal-close-btn {
+            border: none;
+            background: var(--surface);
+            border-radius: 4px;
+            padding: 0.35rem 0.75rem;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .modal-close-btn:hover { background: #e9ecef; }
+
+        /* ── Exam Paper (inside modal & PDF) ─────────── */
+        .exam-paper {
+            padding: 48px 56px;
+            font-family: 'Noto Serif KR', Georgia, 'Times New Roman', serif;
+            font-size: 13.5px;
+            line-height: 1.8;
+            color: #111;
+        }
+        .exam-paper-header {
+            text-align: center;
+            border-bottom: 2px solid #111;
+            padding-bottom: 14px;
+            margin-bottom: 28px;
+        }
+        .exam-paper-header h2 { margin: 0; font-size: 20px; letter-spacing: 2px; }
+        .exam-paper-header p  { margin: 4px 0 0; font-size: 12px; color: #555; }
+
+        .exam-question-block {
+            margin-bottom: 32px;
+            page-break-inside: avoid;
+        }
+        .exam-passage-wrap {
+            border: 1px solid #bbb;
+            border-radius: 4px;
+            padding: 14px 18px;
+            background: #fafafa;
+            font-size: 13px;
+            line-height: 1.85;
+            margin-bottom: 12px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .exam-q-line {
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .exam-choices {
+            padding-left: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .exam-choice-item {
+            font-size: 13px;
+        }
+        .exam-answer-key {
+            border-top: 2px solid #111;
+            margin-top: 36px;
+            padding-top: 14px;
+        }
+        .exam-answer-key h4 { margin: 0 0 10px; font-size: 13px; }
+        .exam-answer-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .exam-answer-chip {
+            font-size: 12px;
+            padding: 3px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        /* ── Print ───────────────────────────────────── */
         @media print {
-            .site-header, #dna-extractor,
+            .site-header, #dna-extractor, .cart-section,
             .step, #compute-log, #generate-btn,
             .copy-btn, .answer-wrap { display: none !important; }
             .main-grid { display: block; }
-            #problem-generator { box-shadow: none; }
-            .question-card { break-inside: avoid; page-break-inside: avoid; border: 1px solid #ccc; }
-            .passage-box { max-height: none; }
         }
     </style>
 </head>
@@ -615,7 +837,7 @@
 ════════════════════════════════════════════════════════ -->
 <header class="site-header">
     <h1>🐜 Ant Colony</h1>
-    <span class="version-pill">v2.4</span>
+    <span class="version-pill">v2.5</span>
 
     <div class="api-key-bar">
         <label for="api-key-input">Groq API Key</label>
@@ -755,6 +977,41 @@
 
 </main>
 
-<script src="colony_engine.js?v=2.4.0"></script>
+<!-- ══════════════════════════════════════════════════════
+     CART SECTION — 문제 장바구니
+════════════════════════════════════════════════════════ -->
+<section class="cart-section" id="cart-section" style="display:none;">
+    <div class="cart-panel">
+        <div class="cart-header">
+            <h3>🛒 문제 장바구니</h3>
+            <span class="cart-count-badge" id="cart-count-badge">0</span>
+            <div class="cart-header-actions">
+                <button class="btn-ghost" id="cart-clear-btn">전체 삭제</button>
+                <button class="btn-preview" id="cart-preview-btn">📋 시험지 미리보기</button>
+            </div>
+        </div>
+        <div id="cart-list">
+            <p class="muted" style="padding:0.5rem 0; font-size:0.85rem;">문제를 담으면 여기에 표시됩니다.</p>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════
+     EXAM PREVIEW MODAL
+════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="exam-modal" style="display:none;">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>시험지 미리보기</h3>
+            <button class="btn-preview" id="modal-pdf-btn">📄 PDF 저장</button>
+            <button class="modal-close-btn" id="modal-close-btn">✕ 닫기</button>
+        </div>
+        <div id="exam-paper-content" class="exam-paper">
+            <!-- rendered exam paper injected here by JS -->
+        </div>
+    </div>
+</div>
+
+<script src="colony_engine.js?v=2.5.0"></script>
 </body>
 </html>

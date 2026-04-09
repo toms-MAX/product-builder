@@ -6,7 +6,7 @@
  *   - Drag & drop file input
  */
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('[Ant Colony v2.4] Multi-Ant Pipeline Online');
+    console.log('[Ant Colony v2.5] Multi-Ant Pipeline Online');
 
     // PDF.js worker setup
     if (typeof pdfjsLib !== 'undefined') {
@@ -57,7 +57,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     const addPassageBtn     = $('add-passage-btn');
     const pdfBtn            = $('pdf-btn');
 
+    // Cart & Modal DOM refs
+    const cartSection       = $('cart-section');
+    const cartList          = $('cart-list');
+    const cartCountBadge    = $('cart-count-badge');
+    const cartClearBtn      = $('cart-clear-btn');
+    const cartPreviewBtn    = $('cart-preview-btn');
+    const examModal         = $('exam-modal');
+    const examPaperContent  = $('exam-paper-content');
+    const modalCloseBtn     = $('modal-close-btn');
+    const modalPdfBtn       = $('modal-pdf-btn');
+
     let allResults = []; // store last generation for PDF export
+    let cart = [];       // shopping cart — selected questions for exam sheet
 
     let totalApiCalls = 0;
 
@@ -206,8 +218,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (learnBtn)      learnBtn.onclick       = runLearningPipeline;
         if (loadToBankBtn) loadToBankBtn.onclick  = loadLearnedDNAs;
         if (generateBtn)   generateBtn.onclick    = runGenerationPipeline;
-        if (addPassageBtn) addPassageBtn.onclick  = addPassageItem;
-        if (pdfBtn)        pdfBtn.onclick         = exportToPDF;
+        if (addPassageBtn)   addPassageBtn.onclick   = addPassageItem;
+        if (pdfBtn)          pdfBtn.onclick          = exportToPDF;
+        if (cartClearBtn)    cartClearBtn.onclick    = clearCart;
+        if (cartPreviewBtn)  cartPreviewBtn.onclick  = openExamPreview;
+        if (modalCloseBtn)   modalCloseBtn.onclick   = closeExamPreview;
+        if (modalPdfBtn)     modalPdfBtn.onclick     = exportCartToPDF;
+        if (examModal) examModal.addEventListener('click', e => {
+            if (e.target === examModal) closeExamPreview();
+        });
 
         // Init first passage slot
         addPassageItem();
@@ -659,6 +678,7 @@ ${text.substring(0, 1000)}
             allResults = results;
             renderResults(results);
             if (pdfBtn) pdfBtn.style.display = results.length > 0 ? 'flex' : 'none';
+            if (cartSection && results.length > 0) cartSection.style.display = 'block';
             log(`── 마스터 개미: 완료! ${results.length}개 문제 생성 (총 API ${totalApiCalls}회 호출) ──`, 'master', genLog);
 
         } catch (err) {
@@ -730,7 +750,7 @@ ${passage.substring(0, 1400)}
         }
 
         return await callGroqJson(
-            'You are a Korean middle school English exam question writer. Follow the template exactly. Return only a JSON object.',
+            'You are a Korean middle school English exam question writer. Follow the template exactly. Return only a JSON object. IMPORTANT: The passage must remain in English only — never add Korean words inside the passage text. Korean is only allowed in the instruction_text and question_text fields.',
             `Write ONE "${p.question_type_ko}" question for the passage below.
 
 QUESTION TYPE TEMPLATE:
@@ -1119,6 +1139,7 @@ ${isGrammar ? '"underlined_parts": array of exactly 5 English phrases from the p
                     <span class="q-type-badge">${typeLabel}</span>
                     ${v ? `<span class="format-badge ${vBadgeClass}">${vBadgeText}</span>` : ''}
                     <button class="copy-btn" title="클립보드에 복사">복사</button>
+                    <button class="add-to-cart-btn">담기</button>
                 </div>
                 ${vIssues}
                 ${q.instruction_text ? `<p class="q-instruction">${q.instruction_text}</p>` : ''}
@@ -1143,8 +1164,187 @@ ${isGrammar ? '"underlined_parts": array of exactly 5 English phrases from the p
                 });
             };
 
+            // Cart "담기" button
+            const cartBtn = card.querySelector('.add-to-cart-btn');
+            cartBtn._qObj = qObj;
+            cartBtn.onclick = () => addToCart(qObj, cartBtn);
+
             resultContainer.appendChild(card);
         });
+    }
+
+    // =====================================================
+    // CART SYSTEM
+    // =====================================================
+    function addToCart(qObj, btn) {
+        const idx = cart.indexOf(qObj);
+        if (idx !== -1) {
+            // Already in cart → remove (toggle)
+            cart.splice(idx, 1);
+            btn.textContent = '담기';
+            btn.classList.remove('added');
+        } else {
+            cart.push(qObj);
+            btn.textContent = '✓ 담김';
+            btn.classList.add('added');
+        }
+        renderCart();
+    }
+
+    function removeFromCart(idx) {
+        const removed = cart.splice(idx, 1)[0];
+        // Reset the matching "담기" button on the card
+        document.querySelectorAll('.add-to-cart-btn.added').forEach(btn => {
+            if (btn._qObj === removed) {
+                btn.textContent = '담기';
+                btn.classList.remove('added');
+            }
+        });
+        renderCart();
+    }
+
+    function clearCart() {
+        cart = [];
+        document.querySelectorAll('.add-to-cart-btn.added').forEach(btn => {
+            btn.textContent = '담기';
+            btn.classList.remove('added');
+        });
+        renderCart();
+    }
+
+    function renderCart() {
+        if (!cartList || !cartSection) return;
+        if (cartCountBadge) cartCountBadge.textContent = cart.length;
+
+        if (cart.length === 0) {
+            cartList.innerHTML = '<p class="muted" style="padding:0.5rem 0; font-size:0.85rem;">담긴 문제가 없습니다.</p>';
+            return;
+        }
+
+        cartList.innerHTML = '';
+        cart.forEach((qObj, i) => {
+            const typeLabel = qObj.meta.question_type_ko || qObj.meta.problem_type;
+            const preview   = (qObj.content.question_text || '').substring(0, 60) + (qObj.content.question_text?.length > 60 ? '...' : '');
+            const div = document.createElement('div');
+            div.className = 'cart-item';
+            div.innerHTML = `
+                <span class="cart-num">${i + 1}.</span>
+                <div class="cart-item-info">
+                    <span class="q-type-badge">${typeLabel}</span>
+                    <span class="cart-q-preview">${preview}</span>
+                </div>
+                <button class="cart-remove-btn" title="삭제">×</button>`;
+            div.querySelector('.cart-remove-btn').onclick = () => removeFromCart(i);
+            cartList.appendChild(div);
+        });
+    }
+
+    // ── Exam Preview Modal ────────────────────────────────
+    function openExamPreview() {
+        if (cart.length === 0) {
+            alert('먼저 문제를 장바구니에 담아주세요.');
+            return;
+        }
+        if (!examModal || !examPaperContent) return;
+        examPaperContent.innerHTML = buildExamPreviewHTML(cart);
+        examModal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeExamPreview() {
+        if (!examModal) return;
+        examModal.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+
+    function buildExamPreviewHTML(questions) {
+        const date = new Date().toLocaleDateString('ko-KR');
+        const nums = ['①', '②', '③', '④', '⑤'];
+
+        let html = `<div class="exam-paper-header">
+            <h2>영어 시험지</h2>
+            <p>Ant Colony Exam Engine &nbsp;·&nbsp; ${date}</p>
+        </div>`;
+
+        // Group consecutive questions by passageIndex to share one passage block
+        const groups = [];
+        let lastPi = null;
+        let cur = null;
+        questions.forEach(q => {
+            const pi = q.passageIndex || 1;
+            if (pi !== lastPi) {
+                cur = { pi, passage: q.content.passage_display || q.content.passage_text || '', qs: [] };
+                groups.push(cur);
+                lastPi = pi;
+            }
+            cur.qs.push(q);
+        });
+
+        let qNum = 1;
+        groups.forEach(g => {
+            const passageHtml = g.passage.replace(/\n/g, '<br>');
+            html += `<div class="exam-question-block">
+                <p style="font-weight:700; font-size:12px; color:#555; margin:0 0 8px;">[지문 ${g.pi}] 다음 글을 읽고 물음에 답하시오.</p>
+                <div class="exam-passage-wrap">${passageHtml}</div>`;
+
+            g.qs.forEach(q => {
+                const c = q.content;
+                const choicesHtml = c.choices?.length
+                    ? `<div class="exam-choices">${c.choices.map((opt, i) =>
+                        `<div class="exam-choice-item">${nums[i] || (i + 1) + '.'} ${opt}</div>`).join('')}</div>`
+                    : '';
+                html += `<div style="margin-bottom:16px; page-break-inside:avoid;">
+                    <div class="exam-q-line">${qNum}. ${c.question_text || ''}</div>
+                    ${choicesHtml}
+                </div>`;
+                qNum++;
+            });
+
+            html += `</div>`;
+        });
+
+        // Answer key
+        html += `<div class="exam-answer-key">
+            <h4>정답</h4>
+            <div class="exam-answer-grid">`;
+        questions.forEach((q, i) => {
+            html += `<div class="exam-answer-chip">${i + 1}번: ${q.content.answer || '-'}</div>`;
+        });
+        html += `</div></div>`;
+
+        return html;
+    }
+
+    async function exportCartToPDF() {
+        if (cart.length === 0) return;
+        if (!examPaperContent) return;
+        const origText = modalPdfBtn?.textContent || 'PDF 저장';
+        if (modalPdfBtn) { modalPdfBtn.textContent = '생성 중...'; modalPdfBtn.disabled = true; }
+
+        try {
+            const canvas = await html2canvas(examPaperContent, { scale: 2, useCORS: true, backgroundColor: '#fff' });
+            const { jsPDF } = window.jspdf;
+            const doc   = new jsPDF('p', 'mm', 'a4');
+            const pageW = doc.internal.pageSize.getWidth();
+            const pageH = doc.internal.pageSize.getHeight();
+            const imgW  = pageW;
+            const imgH  = (canvas.height * imgW) / canvas.width;
+
+            let posY = 0;
+            let page = 0;
+            while (posY < imgH) {
+                if (page > 0) doc.addPage();
+                doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, -posY, imgW, imgH);
+                posY += pageH;
+                page++;
+            }
+            doc.save('시험지.pdf');
+            log('PDF 저장 완료!', 'success', genLog);
+        } catch (e) {
+            log(`PDF 생성 오류: ${e.message}`, 'error', genLog);
+        } finally {
+            if (modalPdfBtn) { modalPdfBtn.textContent = origText; modalPdfBtn.disabled = false; }
+        }
     }
 
     function buildPlainText(qObj, num) {
