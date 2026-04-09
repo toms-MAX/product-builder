@@ -637,11 +637,12 @@ ${passage.substring(0, 1400)}
 
         if (isGrammar) {
             // Grammar error: ①~⑤ embedded in passage
-            choiceSpec  = `"correct_answer_index": 0-based index (0~4) of the phrase that contains the grammar error`;
+            choiceSpec  = `"correct_answer_index": 0-based index (0~4) of the phrase that has the grammar issue`;
             markingSpec = `MARKING (grammar error type):
-  Select 5 short phrases from the passage to underline (labeled ①②③④⑤).
-  Introduce ONE deliberate grammar error into exactly one of them.
-  Return "underlined_parts": array of exactly 5 English phrases (copy from passage, with the error introduced in the wrong one)`;
+  Select 5 short phrases from the passage to label ①②③④⑤.
+  Copy each phrase EXACTLY as it appears in the passage — do NOT modify them.
+  One phrase should be the answer (contains a grammar issue worth testing).
+  Return "underlined_parts": array of exactly 5 strings copied verbatim from the passage`;
         } else if (isMultiChoice) {
             choiceSpec  = `"choices": array of exactly ${choiceCount} strings in ${choiceLang} — 1 correct, ${choiceCount - 1} wrong but plausible distractors
 "correct_answer_index": 0-based index (number) of the correct item`;
@@ -696,20 +697,56 @@ ${isGrammar ? '"underlined_parts": array of exactly 5 English phrases from the p
     function markPassage(passage, built, target) {
         const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+        // Robust find-and-replace: exact → case-insensitive → first-N-words partial
+        function applyMark(text, phrase, makeMark) {
+            const p = phrase.trim();
+            if (!p) return null;
+
+            // 1. Exact match
+            const exactIdx = text.indexOf(p);
+            if (exactIdx !== -1) {
+                return text.slice(0, exactIdx) + makeMark(p) + text.slice(exactIdx + p.length);
+            }
+
+            // 2. Case-insensitive match
+            const ciRe = new RegExp(escapeRe(p), 'i');
+            const ciMatch = text.match(ciRe);
+            if (ciMatch) {
+                return text.replace(ciRe, makeMark(ciMatch[0]));
+            }
+
+            // 3. Partial match: first 4+ words (handles trailing punctuation differences)
+            const words = p.split(/\s+/).filter(Boolean);
+            if (words.length >= 2) {
+                const partialRe = new RegExp(words.slice(0, Math.min(4, words.length)).map(escapeRe).join('\\s+'), 'i');
+                const partialMatch = text.match(partialRe);
+                if (partialMatch) {
+                    return text.replace(partialRe, makeMark(partialMatch[0]));
+                }
+            }
+
+            return null; // not found
+        }
+
         if (target === 'underlined_phrase' && built.target_phrase_exact) {
             const phrase = built.target_phrase_exact.trim();
-            return passage.replace(
-                new RegExp(escapeRe(phrase)),
-                `<span class="mark-underline"><span class="mark-label">(A)</span>${phrase}</span>`
+            const result = applyMark(
+                passage, phrase,
+                matched => `<span class="mark-underline"><span class="mark-label">(A)</span>${matched}</span>`
             );
+            if (result) return result;
+            // Fallback: show hint below passage
+            return passage + `<p class="mark-hint">⚠ (A) 표시 대상: "${phrase}"</p>`;
         }
 
         if (target === 'blank_in_passage' && built.target_phrase_exact) {
             const phrase = built.target_phrase_exact.trim();
-            return passage.replace(
-                new RegExp(escapeRe(phrase)),
-                `<span class="mark-blank">&nbsp;&nbsp;(A)&nbsp;&nbsp;</span>`
+            const result = applyMark(
+                passage, phrase,
+                () => `<span class="mark-blank">&nbsp;(A)&nbsp;</span>`
             );
+            if (result) return result;
+            return passage + `<p class="mark-hint">⚠ 빈칸 위치: "${phrase}"</p>`;
         }
 
         if (target === 'grammar_error' && Array.isArray(built.underlined_parts)) {
@@ -717,15 +754,16 @@ ${isGrammar ? '"underlined_parts": array of exactly 5 English phrases from the p
             let marked = passage;
             built.underlined_parts.forEach((part, i) => {
                 if (!part) return;
-                marked = marked.replace(
-                    new RegExp(escapeRe(part.trim())),
-                    `<span class="mark-numbered"><span class="mark-num">${nums[i]}</span>${part.trim()}</span>`
+                const result = applyMark(
+                    marked, part,
+                    matched => `<span class="mark-numbered"><span class="mark-num">${nums[i]}</span>${matched}</span>`
                 );
+                if (result) marked = result;
             });
             return marked;
         }
 
-        return passage; // no markup needed for topic/summary types
+        return passage;
     }
 
     // Assemble final question object from ant output — no API call
