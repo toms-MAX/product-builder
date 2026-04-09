@@ -1,12 +1,18 @@
 /**
- * Ant Colony - Exam Engine v2.2
+ * Ant Colony - Exam Engine v2.3
  * Architecture: Multi-Ant Pipeline
  *   - Each "ant" is one tiny, focused AI call
- *   - Complex tasks are assembled from simple outputs
- *   - Designed for lightweight/free-tier AI models (Groq free tier: 6000 TPM)
+ *   - Supports image + PDF (digital text extraction + OCR fallback)
+ *   - Drag & drop file input
  */
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('[Ant Colony v2.2] Multi-Ant Pipeline Online');
+    console.log('[Ant Colony v2.3] Multi-Ant Pipeline Online');
+
+    // PDF.js worker setup
+    if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
 
     // =====================================================
     // CONFIG
@@ -19,6 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let apiKey = localStorage.getItem('groq_api_key') || '';
     let dnaBank = [];          // all known DNA templates
     let learnedDNAs = [];      // DNAs extracted in current session
+    let currentFile = null;    // currently loaded file (image or PDF)
 
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -32,7 +39,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const keyStatus         = $('key-status');
     const imageUpload       = $('image-upload');
     const imagePreview      = $('image-preview');
-    const previewWrap       = $('image-preview-container');
+    const pdfCanvas         = $('pdf-page-preview');
+    const dropZone          = $('drop-zone');
     const learnBtn          = $('full-auto-extract-btn');
     const ocrLog            = $('ocr-log');
     const learnedList       = $('learned-dna-list');
@@ -190,10 +198,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function bindEvents() {
         if (saveKeyBtn)    saveKeyBtn.onclick    = saveKey;
-        if (imageUpload)   imageUpload.onchange  = previewImage;
         if (learnBtn)      learnBtn.onclick       = runLearningPipeline;
         if (loadToBankBtn) loadToBankBtn.onclick  = loadLearnedDNAs;
         if (generateBtn)   generateBtn.onclick    = runGenerationPipeline;
+
+        // ── Drop Zone ────────────────────────────────────
+        if (dropZone) {
+            dropZone.addEventListener('click', () => imageUpload?.click());
+
+            dropZone.addEventListener('dragover', e => {
+                e.preventDefault();
+                dropZone.classList.add('drag-over');
+            });
+            dropZone.addEventListener('dragleave', e => {
+                if (!dropZone.contains(e.relatedTarget))
+                    dropZone.classList.remove('drag-over');
+            });
+            dropZone.addEventListener('drop', e => {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+                const file = e.dataTransfer.files[0];
+                if (file) handleFileInput(file);
+            });
+        }
+
+        if (imageUpload) {
+            imageUpload.addEventListener('change', e => {
+                const file = e.target.files[0];
+                if (file) handleFileInput(file);
+            });
+        }
     }
 
     function saveKey() {
@@ -209,18 +243,63 @@ document.addEventListener('DOMContentLoaded', async () => {
         keyStatus.style.color = valid ? '#63e6be' : '#ff6b6b';
     }
 
-    function previewImage(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = ev => {
-            if (imagePreview) {
-                imagePreview.src = ev.target.result;
-                imagePreview.style.display = 'block';
-            }
-        };
-        reader.readAsDataURL(file);
-        log(`이미지 선택: ${file.name}`, 'info', ocrLog);
+    // ── File Input Handler (image or PDF) ────────────────
+    function handleFileInput(file) {
+        const isPDF   = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        const isImage = file.type.startsWith('image/');
+        if (!isPDF && !isImage) {
+            log(`지원하지 않는 파일 형식: ${file.type}`, 'error', ocrLog);
+            return;
+        }
+
+        currentFile = file;
+
+        // Update drop zone appearance
+        if (dropZone) {
+            dropZone.classList.add('has-file');
+            dropZone.innerHTML = `
+                <span class="drop-zone-icon">${isPDF ? '📄' : '🖼️'}</span>
+                <p class="drop-zone-filename">${file.name}</p>
+                <p class="drop-zone-sub">${(file.size / 1024).toFixed(0)} KB · 클릭하면 다시 선택</p>`;
+        }
+
+        // Show preview
+        if (isPDF) {
+            previewPdfFirstPage(file);
+        } else {
+            const reader = new FileReader();
+            reader.onload = ev => {
+                if (imagePreview) {
+                    imagePreview.src = ev.target.result;
+                    imagePreview.style.display = 'block';
+                }
+                if (pdfCanvas) pdfCanvas.style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        log(`파일 선택: ${file.name} (${isPDF ? 'PDF' : '이미지'})`, 'info', ocrLog);
+    }
+
+    async function previewPdfFirstPage(file) {
+        if (!pdfCanvas || typeof pdfjsLib === 'undefined') return;
+        try {
+            const ab  = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+            const page = await pdf.getPage(1);
+            const vp   = page.getViewport({ scale: 1.0 });
+            // Scale to fit max width 400px
+            const scale    = Math.min(400 / vp.width, 1.5);
+            const viewport = page.getViewport({ scale });
+            pdfCanvas.width  = viewport.width;
+            pdfCanvas.height = viewport.height;
+            pdfCanvas.style.display = 'block';
+            pdfCanvas.style.maxWidth = '100%';
+            if (imagePreview) imagePreview.style.display = 'none';
+            await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport }).promise;
+        } catch (e) {
+            log(`PDF 미리보기 오류: ${e.message}`, 'warn', ocrLog);
+        }
     }
 
     // =====================================================
@@ -239,14 +318,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         setBtn(learnBtn, false, '🐜 학습 중...');
 
         try {
-            const file = imageUpload?.files[0];
-            if (!file) throw new Error('이미지를 먼저 업로드해주세요.');
+            const file = currentFile;
+            if (!file) throw new Error('파일을 먼저 업로드해주세요. (이미지 또는 PDF)');
 
-            // ── Ant 1: OCR ──────────────────────────────────
-            log('[1/3] OCR 개미 투입 중...', 'ant', ocrLog);
-            const rawText = await ocrAnt(file);
-            if (!rawText.trim()) throw new Error('OCR 결과가 비었습니다. 이미지 품질을 확인해주세요.');
-            log(`OCR 완료 (${rawText.length}자 추출).`, 'success', ocrLog);
+            // ── Ant 1: Extract text from image or PDF ────────
+            const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+            log(`[1/3] ${isPDF ? 'PDF' : '이미지'} 텍스트 추출 개미 투입 중...`, 'ant', ocrLog);
+            const rawText = isPDF ? await pdfExtractAnt(file) : await ocrAnt(file);
+            if (!rawText.trim()) throw new Error('텍스트를 추출하지 못했습니다. 파일 품질을 확인해주세요.');
+            log(`텍스트 추출 완료 (${rawText.length}자).`, 'success', ocrLog);
 
             // ── Ant 2: Segmentation ──────────────────────────
             log('[2/3] 문제 분리 개미 투입 중...', 'ant', ocrLog);
@@ -300,6 +380,58 @@ document.addEventListener('DOMContentLoaded', async () => {
         const { data: { text } } = await worker.recognize(file);
         await worker.terminate();
         return text;
+    }
+
+    // PDF Text Extraction Ant
+    // Strategy: try direct text extraction first (fast, no OCR)
+    //           if insufficient text found, fall back to page-by-page OCR
+    async function pdfExtractAnt(file) {
+        if (typeof pdfjsLib === 'undefined') throw new Error('PDF.js 라이브러리가 로드되지 않았습니다.');
+
+        const ab  = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+        const maxPages = Math.min(pdf.numPages, 5);
+        log(`PDF ${pdf.numPages}페이지 감지 (최대 ${maxPages}페이지 처리).`, 'info', ocrLog);
+
+        // ── 1st attempt: direct text extraction (digital PDF) ──
+        let fullText = '';
+        for (let p = 1; p <= maxPages; p++) {
+            const page    = await pdf.getPage(p);
+            const content = await page.getTextContent();
+            const pageText = content.items.map(i => i.str).join(' ');
+            fullText += pageText + '\n';
+        }
+
+        // If meaningful text found, return it
+        if (fullText.replace(/\s/g, '').length > 100) {
+            log('디지털 PDF 텍스트 직접 추출 성공.', 'success', ocrLog);
+            return fullText;
+        }
+
+        // ── 2nd attempt: OCR each page (scanned PDF) ──────────
+        log('텍스트 없는 스캔 PDF 감지 → OCR 모드로 전환...', 'warn', ocrLog);
+        let ocrText = '';
+        for (let p = 1; p <= maxPages; p++) {
+            log(`  OCR 처리 중: ${p}/${maxPages}페이지...`, 'ant', ocrLog);
+            const page     = await pdf.getPage(p);
+            const viewport = page.getViewport({ scale: 2.0 });
+            const canvas   = document.createElement('canvas');
+            canvas.width   = viewport.width;
+            canvas.height  = viewport.height;
+            await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+            const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+            const worker = await Tesseract.createWorker('eng+kor', 1, {
+                logger: m => {
+                    if (m.progress > 0 && m.status !== 'initializing api')
+                        log(`  OCR ${p}p: ${(m.progress * 100).toFixed(0)}%`, 'ant', ocrLog);
+                }
+            });
+            const { data: { text } } = await worker.recognize(blob);
+            await worker.terminate();
+            ocrText += text + '\n';
+        }
+        return ocrText;
     }
 
     // Ant 2: Rule-based segmentation (no API call needed)

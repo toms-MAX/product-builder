@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ant Colony - Exam Engine v2.2</title>
+    <title>Ant Colony - Exam Engine v2.3</title>
 
-    <!-- Tesseract OCR only — jspdf/html2canvas removed until PDF export is implemented -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
     <style>
         /* ── Reset & Base ─────────────────────────────── */
@@ -221,21 +221,61 @@
         .btn-success { background: var(--green); color: #fff; }
         .btn-success:hover:not(:disabled) { background: #218838; }
 
-        /* ── Image preview ───────────────────────────── */
-        #image-preview-container {
+        /* ── Drop Zone ───────────────────────────────── */
+        .drop-zone {
             border: 2px dashed var(--border);
-            border-radius: 4px;
-            min-height: 140px;
+            border-radius: var(--radius);
+            min-height: 150px;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
             background: var(--surface);
+            position: relative;
             overflow: hidden;
+            gap: 0.5rem;
+            padding: 1.25rem;
+            text-align: center;
         }
-
-        #image-preview { max-width: 100%; max-height: 280px; object-fit: contain; display: none; }
-
-        .preview-hint { color: var(--muted); font-size: 0.85rem; }
+        .drop-zone:hover { border-color: var(--blue); background: #f0f6ff; }
+        .drop-zone.drag-over {
+            border-color: var(--blue);
+            border-style: solid;
+            background: #e8f0ff;
+        }
+        .drop-zone.has-file {
+            border-color: var(--green);
+            border-style: solid;
+            background: #f0fff4;
+        }
+        .drop-zone-icon { font-size: 2rem; line-height: 1; }
+        .drop-zone-text { font-size: 0.88rem; color: var(--muted); margin: 0; }
+        .drop-zone-sub  { font-size: 0.75rem; color: #aaa; margin: 0; }
+        .drop-zone-filename {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--green);
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #image-preview {
+            max-width: 100%;
+            max-height: 180px;
+            object-fit: contain;
+            border-radius: 4px;
+            display: none;
+        }
+        #pdf-page-preview {
+            max-width: 100%;
+            max-height: 180px;
+            object-fit: contain;
+            border-radius: 4px;
+            display: none;
+        }
 
         /* ── Log box ─────────────────────────────────── */
         .log-box {
@@ -433,7 +473,7 @@
 ════════════════════════════════════════════════════════ -->
 <header class="site-header">
     <h1>🐜 Ant Colony</h1>
-    <span class="version-pill">v2.2</span>
+    <span class="version-pill">v2.3</span>
 
     <div class="api-key-bar">
         <label for="api-key-input">Groq API Key</label>
@@ -462,13 +502,21 @@
 
             <!-- Step 1: Upload -->
             <div class="step">
-                <div class="step-title">STEP 1 &mdash; 시험지 이미지 업로드</div>
+                <div class="step-title">STEP 1 &mdash; 시험지 업로드 (이미지 / PDF)</div>
                 <div class="step-body">
-                    <input type="file" id="image-upload" accept="image/*">
-                    <div id="image-preview-container">
-                        <img id="image-preview" alt="미리보기">
-                        <span class="preview-hint">이미지를 선택하면 여기에 표시됩니다</span>
+                    <!-- Hidden file input -->
+                    <input type="file" id="image-upload" accept="image/*,.pdf" hidden>
+
+                    <!-- Drop Zone -->
+                    <div id="drop-zone" class="drop-zone">
+                        <span class="drop-zone-icon">📂</span>
+                        <p class="drop-zone-text">드래그하거나 클릭하여 파일 선택</p>
+                        <p class="drop-zone-sub">지원 형식: JPG · PNG · GIF · PDF</p>
                     </div>
+
+                    <!-- Preview (shown after file selected) -->
+                    <img id="image-preview" alt="이미지 미리보기">
+                    <canvas id="pdf-page-preview"></canvas>
                 </div>
             </div>
 
@@ -561,6 +609,6 @@
 
 </main>
 
-<script src="colony_engine.js?v=2.2.0"></script>
+<script src="colony_engine.js?v=2.3.0"></script>
 </body>
 </html>
