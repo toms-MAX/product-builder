@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const genLog            = $('compute-log');
     const resultContainer   = $('generated-questions');
     const apiCallCounter    = $('api-call-counter');
+    const customInstruction = $('custom-instruction');
 
     let totalApiCalls = 0;
 
@@ -437,7 +438,8 @@ ${text.substring(0, 1000)}
 
                     try {
                         // ── Ant 2: Generate (plan+build combined) ────
-                        const built = await questionGeneratorAnt(dna, passage, analysis);
+                        const userOrder = customInstruction?.value?.trim() || '';
+                        const built = await questionGeneratorAnt(dna, passage, analysis, userOrder);
                         await sleep(DELAY_MS);
 
                         // ── Ant 3: Audit ──────────────────────────────
@@ -484,7 +486,7 @@ ${passage.substring(0, 1400)}
 
     // Ant 2: Generate question — plan + build in ONE call (halves API usage)
     // Directly injects question_template from questions.json for quality
-    async function questionGeneratorAnt(dna, passage, analysis) {
+    async function questionGeneratorAnt(dna, passage, analysis, userOrder = '') {
         const p = dna.pattern;
         const isMultiChoice = p.format === 'multiple_choice';
         const choiceCount   = p.choice_count || (isMultiChoice ? 5 : 0);
@@ -508,6 +510,7 @@ QUESTION TYPE TEMPLATE:
   What to test: ${p.target}
   Cognitive skill: ${p.cognitive_skill}
 ${p.trap_concept ? '  Distractor rule: ' + p.trap_concept : ''}
+${userOrder ? `\nSPECIAL INSTRUCTIONS FROM USER (follow strictly):\n  ${userOrder}` : ''}
 
 PASSAGE CONTEXT:
   Topic: ${analysis.topic_ko || ''}
