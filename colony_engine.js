@@ -1,19 +1,20 @@
 /**
- * Ant Colony - Exam Engine v2.1
+ * Ant Colony - Exam Engine v2.2
  * Architecture: Multi-Ant Pipeline
  *   - Each "ant" is one tiny, focused AI call
  *   - Complex tasks are assembled from simple outputs
- *   - Designed for lightweight/free-tier AI models
+ *   - Designed for lightweight/free-tier AI models (Groq free tier: 6000 TPM)
  */
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('[Ant Colony v2.1] Multi-Ant Pipeline Online');
+    console.log('[Ant Colony v2.2] Multi-Ant Pipeline Online');
 
     // =====================================================
     // CONFIG
     // =====================================================
     const API_URL   = 'https://api.groq.com/openai/v1/chat/completions';
     const MODEL     = 'llama-3.1-8b-instant';
-    const DELAY_MS  = 1300; // pause between API calls (free tier safety)
+    const DELAY_MS  = 4500;  // safe gap between calls on free tier (6000 TPM)
+    const MAX_RETRY = 4;     // max retries on rate limit
 
     let apiKey = localStorage.getItem('groq_api_key') || '';
     let dnaBank = [];          // all known DNA templates
@@ -79,8 +80,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // =====================================================
-    // GROQ API — system + user message pattern
+    // GROQ API — with auto rate-limit retry
     // =====================================================
+
+    // Parse "Please try again in 1.5s" or "in 550ms" from Groq error messages
+    function parseRetryMs(errorMsg) {
+        const m = errorMsg.match(/try again in\s+([\d.]+)(ms|s|m)/i);
+        if (!m) return 5000;
+        const val = parseFloat(m[1]);
+        const unit = m[2].toLowerCase();
+        if (unit === 'ms') return Math.ceil(val) + 600;
+        if (unit === 's')  return Math.ceil(val * 1000) + 1000;
+        if (unit === 'm')  return Math.ceil(val * 60000) + 1000;
+        return 5000;
+    }
+
     async function callGroq(systemMsg, userMsg, asJson = false) {
         if (!apiKey) throw new Error('API Key가 설정되지 않았습니다. 상단에서 저장해주세요.');
 
@@ -91,58 +105,60 @@ document.addEventListener('DOMContentLoaded', async () => {
         const body = {
             model: MODEL,
             messages,
-            temperature: asJson ? 0.2 : 0.6,
-            max_tokens: asJson ? 1024 : 512,
+            temperature: asJson ? 0.2 : 0.5,
+            max_tokens: 900,
             stream: false
         };
         if (asJson) body.response_format = { type: 'json_object' };
 
-        const res = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
+        for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+            const res = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            bumpCounter();
 
-        bumpCounter();
+            if (res.ok) {
+                const data = await res.json();
+                return data.choices[0].message.content;
+            }
 
-        if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             const msg = err.error?.message || `HTTP ${res.status}`;
+
+            if (res.status === 429) {
+                const waitMs = parseRetryMs(msg);
+                const activeLog = genLog || ocrLog;
+                log(`Rate limit → ${(waitMs / 1000).toFixed(1)}초 대기 후 재시도 (${attempt}/${MAX_RETRY})...`, 'warn', activeLog);
+                await sleep(waitMs);
+                continue;
+            }
+
             throw new Error(`Groq API 오류: ${msg}`);
         }
-
-        const data = await res.json();
-        return data.choices[0].message.content;
+        throw new Error(`Rate limit 재시도 ${MAX_RETRY}회 초과. 잠시 후 다시 시도해주세요.`);
     }
 
     function extractJson(raw) {
         try { return JSON.parse(raw); } catch {}
-        // Extract first {...} block from text (handles markdown fences etc.)
         const match = raw.match(/\{[\s\S]*\}/);
-        if (match) {
-            try { return JSON.parse(match[0]); } catch {}
-        }
+        if (match) { try { return JSON.parse(match[0]); } catch {} }
         throw new Error('AI가 유효한 JSON을 반환하지 않았습니다.');
     }
 
     async function callGroqJson(systemMsg, userMsg) {
-        // First attempt: strict JSON mode
+        // First: strict JSON mode
         try {
             const raw = await callGroq(systemMsg, userMsg, true);
             return extractJson(raw);
         } catch (e) {
-            // Groq throws "Failed to generate JSON" when the model can't comply
             if (!e.message.includes('Failed to generate JSON') && !e.message.includes('json')) throw e;
-
-            // Fallback: plain text mode — ask model to output JSON manually
+            // Fallback: plain text + manual parse
             const activeLog = genLog || ocrLog;
             log('JSON mode 실패 → 텍스트 모드로 재시도 중...', 'warn', activeLog);
-            await sleep(800);
-            const fallbackUser = userMsg + '\n\nOutput ONLY a raw JSON object. No markdown, no code fences, no explanation.';
-            const raw = await callGroq(systemMsg, fallbackUser, false);
+            await sleep(1000);
+            const raw = await callGroq(systemMsg, userMsg + '\n\nOutput ONLY a raw JSON object. No markdown, no explanation.', false);
             return extractJson(raw);
         }
     }
@@ -406,36 +422,31 @@ ${text.substring(0, 1000)}
 
             log(`── 마스터 개미: 파이프라인 시작 (${selectedDNAs.length}유형 × ${count}문항) ──`, 'master', genLog);
 
-            // ── Ant 1: Analyze passage ONCE ─────────────────
+            // ── Ant 1: Analyze passage ONCE (shared) ────────
             log('[분석] 지문 분석 개미 투입...', 'ant', genLog);
             const analysis = await passageAnalyzerAnt(passage);
-            log(`지문 분석 완료 → 주제: ${analysis.main_topic}`, 'success', genLog);
+            log(`지문 분석 완료 → 주제: ${analysis.topic_ko || '분석됨'}`, 'success', genLog);
+            await sleep(DELAY_MS);
 
             const results = [];
 
             for (const dna of selectedDNAs) {
                 for (let i = 0; i < count; i++) {
                     const label = dna.meta.question_type_ko || dna.meta.problem_type;
-                    log(`[생성] "${label}" (${i + 1}/${count}) 생성 시작...`, 'ant', genLog);
-                    await sleep(DELAY_MS);
+                    log(`[생성] "${label}" (${i + 1}/${count}) 생성 중...`, 'ant', genLog);
 
                     try {
-                        // ── Ant 2: Plan ──────────────────────────────
-                        log('  └ 기획 개미: 출제 계획 수립 중...', 'ant', genLog);
-                        const plan = await questionPlannerAnt(dna, analysis);
+                        // ── Ant 2: Generate (plan+build combined) ────
+                        const built = await questionGeneratorAnt(dna, passage, analysis);
                         await sleep(DELAY_MS);
 
-                        // ── Ant 3: Build ─────────────────────────────
-                        log('  └ 제작 개미: 문제 작성 중...', 'ant', genLog);
-                        const built = await questionBuilderAnt(dna, passage, plan);
-
-                        // ── Ant 4: Audit ─────────────────────────────
+                        // ── Ant 3: Audit ──────────────────────────────
                         const assembled = assembleQuestion(dna, passage, built);
                         if (auditAnt(assembled, genLog)) {
                             results.push(assembled);
                             log(`  └ ✓ 감사 통과`, 'auditor', genLog);
                         } else {
-                            log(`  └ ✗ 감사 실패 — 구조 오류. 스킵.`, 'auditor', genLog);
+                            log(`  └ ✗ 감사 실패. 스킵.`, 'auditor', genLog);
                         }
 
                     } catch (e) {
@@ -454,101 +465,91 @@ ${text.substring(0, 1000)}
         }
     }
 
-    // Ant 1: Analyze passage — shared across all questions
+    // Ant 1: Analyze passage — called ONCE, shared across all questions
     async function passageAnalyzerAnt(passage) {
         return await callGroqJson(
-            'You are a concise English text analyst. Return only valid JSON.',
-            `Analyze this English passage. Return a JSON object with these exact keys:
-- "main_topic": the topic in Korean (5 words max)
-- "main_idea_ko": one-sentence Korean summary of the passage
-- "tone": one of: formal, informal, descriptive, narrative, argumentative
-- "key_phrase_1": a notable English phrase from the passage
-- "key_phrase_2": another notable English phrase
-- "key_phrase_3": another notable English phrase
+            'You are an English text analyst. Return only a JSON object.',
+            `Read this passage and return a JSON object with exactly these 4 keys:
+"topic_ko": main topic in Korean (4 words max)
+"summary_ko": one Korean sentence summary
+"key_phrase_1": one important English phrase copied exactly from the passage
+"key_phrase_2": another important English phrase copied exactly from the passage
 
 Passage:
 """
-${passage.substring(0, 1800)}
+${passage.substring(0, 1400)}
 """`
         );
     }
 
-    // Ant 2: Plan what to ask — small, focused call
-    async function questionPlannerAnt(dna, analysis) {
-        const p = dna.pattern;
-        const keyPhrases = [analysis.key_phrase_1, analysis.key_phrase_2, analysis.key_phrase_3].filter(Boolean);
-        return await callGroqJson(
-            'You are an exam question planner. Be specific and concise. Return valid JSON only.',
-            `Plan ONE question of type "${p.question_type_ko}".
-
-What to test: ${p.target}
-Cognitive skill needed: ${p.cognitive_skill}
-Passage topic: ${analysis.main_topic}
-Key phrases from passage: ${keyPhrases.join(' / ')}
-
-Return a JSON object with these exact keys:
-- "target_phrase": a specific phrase or word from the passage to focus on (string, or null)
-- "question_focus": one sentence describing exactly what this question will test
-- "hint_for_builder": one sentence on how to construct this question effectively`
-        );
-    }
-
-    // Ant 3: Build the question — the main creative call
-    async function questionBuilderAnt(dna, passage, plan) {
+    // Ant 2: Generate question — plan + build in ONE call (halves API usage)
+    // Directly injects question_template from questions.json for quality
+    async function questionGeneratorAnt(dna, passage, analysis) {
         const p = dna.pattern;
         const isMultiChoice = p.format === 'multiple_choice';
-        const choiceCount = p.choice_count || (isMultiChoice ? 5 : 0);
-        const choiceLang = p.choice_language === 'korean' ? 'Korean' : 'English';
+        const choiceCount   = p.choice_count || (isMultiChoice ? 5 : 0);
+        const choiceLang    = p.choice_language === 'korean'            ? 'Korean'
+                            : p.choice_language === 'english'           ? 'English'
+                            : p.choice_language === 'english_underlined' ? 'English'
+                            : 'Korean';
 
         const choiceSpec = isMultiChoice
-            ? `- "choices": an array of ${choiceCount} answer options in ${choiceLang} (1 correct, ${choiceCount - 1} plausible but wrong distractors)
-- "correct_answer_index": the 0-based index of the correct choice in the array`
-            : `- "answer": the correct answer text`;
+            ? `"choices": array of exactly ${choiceCount} strings in ${choiceLang} — 1 correct answer, ${choiceCount - 1} wrong but plausible distractors
+"correct_answer_index": 0-based index (number) of the correct item in choices`
+            : `"answer": the correct answer string in Korean`;
 
         return await callGroqJson(
-            'You are an English exam question writer for Korean middle school students. Write clear, accurate questions. Return valid JSON only.',
-            `Create a "${p.question_type_ko}" question based on the passage below.
+            'You are a Korean middle school English exam question writer. Follow the template exactly. Return only a JSON object.',
+            `Write ONE "${p.question_type_ko}" question for the passage below.
 
-Question focus: ${plan.question_focus}
-Target phrase: ${plan.target_phrase || 'none'}
-Hint: ${plan.hint_for_builder}
-Instruction line: ${p.instruction}
-${p.trap_concept ? 'Trap to apply: ' + p.trap_concept : ''}
+QUESTION TYPE TEMPLATE:
+  Instruction: ${p.instruction}
+  Question format: ${p.question_template}
+  What to test: ${p.target}
+  Cognitive skill: ${p.cognitive_skill}
+${p.trap_concept ? '  Distractor rule: ' + p.trap_concept : ''}
 
-Passage:
+PASSAGE CONTEXT:
+  Topic: ${analysis.topic_ko || ''}
+  Key phrase 1: ${analysis.key_phrase_1 || ''}
+  Key phrase 2: ${analysis.key_phrase_2 || ''}
+
+FULL PASSAGE:
 """
-${passage.substring(0, 1800)}
+${passage.substring(0, 1300)}
 """
 
-Return a JSON object with these exact keys:
-- "instruction_text": the instruction line in Korean
-- "question_text": the question in Korean
+OUTPUT — return a JSON object with exactly these keys:
+"instruction_text": instruction line in Korean
+"question_text": the question in Korean (follow the question format template above)
 ${choiceSpec}
-- "explanation_ko": 2-3 sentence Korean explanation of why the answer is correct`
+"explanation_ko": 2-3 Korean sentences explaining why the answer is correct`
         );
     }
 
-    // Pure assembly — no API call
+    // Assemble final question object from ant output — no API call
     function assembleQuestion(dna, passage, built) {
-        let answer = built.answer || '';
+        let answer  = built.answer || '';
         let choices = null;
 
         if (dna.pattern.format === 'multiple_choice' && Array.isArray(built.choices)) {
             choices = built.choices;
-            const idx = typeof built.correct_answer_index === 'number' ? built.correct_answer_index : 0;
+            const idx = typeof built.correct_answer_index === 'number'
+                ? Math.max(0, Math.min(built.correct_answer_index, choices.length - 1))
+                : 0;
             answer = choices[idx] || choices[0] || '';
         }
 
         return {
-            meta: { ...dna.meta },
+            meta:    { ...dna.meta },
             pattern: { ...dna.pattern },
             content: {
                 instruction_text: built.instruction_text || dna.pattern.instruction,
-                question_text:    built.question_text   || '',
+                question_text:    built.question_text    || '',
                 passage_text:     passage,
                 choices,
                 answer,
-                explanation:      built.explanation_ko  || ''
+                explanation:      built.explanation_ko   || ''
             }
         };
     }

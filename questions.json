@@ -13,11 +13,12 @@
       "format": "multiple_choice",
       "choice_count": 5,
       "instruction": "다음 글을 읽고 물음에 답하시오.",
+      "question_template": "윗글의 밑줄 친 (A)가 의미하는 바로 가장 적절한 것은?",
       "target": "underlined_phrase",
       "cognitive_skill": "inference",
       "choice_language": "korean",
       "question_type_ko": "밑줄 친 구절 의미 추론",
-      "trap_concept": "literal vs contextual meaning"
+      "trap_concept": "사전적 의미와 문맥적 의미의 차이를 이용한 오답 배치"
     }
   },
   {
@@ -34,11 +35,12 @@
       "format": "multiple_choice",
       "choice_count": 5,
       "instruction": "다음 글을 읽고 물음에 답하시오.",
+      "question_template": "윗글의 주제로 가장 적절한 것은?",
       "target": "main_topic",
       "cognitive_skill": "comprehension",
       "choice_language": "korean",
       "question_type_ko": "주제 파악",
-      "trap_concept": "detail vs main idea"
+      "trap_concept": "세부 내용을 주제로 착각하게 만드는 오답 배치"
     }
   },
   {
@@ -55,11 +57,12 @@
       "format": "multiple_choice",
       "choice_count": 5,
       "instruction": "다음 글을 읽고 물음에 답하시오.",
+      "question_template": "윗글의 빈칸 (A)에 들어갈 말로 가장 적절한 것은?",
       "target": "blank_in_passage",
       "cognitive_skill": "inference",
       "choice_language": "english",
       "question_type_ko": "빈칸 추론",
-      "trap_concept": "related words that do not fit logically"
+      "trap_concept": "의미상 관련 있지만 문맥에 맞지 않는 단어를 오답으로 배치"
     }
   },
   {
@@ -76,6 +79,7 @@
       "format": "short_answer",
       "choice_count": 0,
       "instruction": "다음 글을 읽고 물음에 답하시오.",
+      "question_template": "윗글의 주제를 우리말로 한 문장으로 쓰시오.",
       "target": "main_idea",
       "cognitive_skill": "synthesis",
       "choice_language": "none",
@@ -97,11 +101,12 @@
       "format": "multiple_choice",
       "choice_count": 5,
       "instruction": "다음 글의 밑줄 친 부분 중, 어법상 틀린 것은?",
+      "question_template": "다음 글의 밑줄 친 부분 중, 어법상 틀린 것은? ① ~ ⑤",
       "target": "grammatical_error",
       "cognitive_skill": "grammar",
       "choice_language": "english_underlined",
       "question_type_ko": "어법상 틀린 것 고르기",
-      "trap_concept": "common grammar mistakes: tense, subject-verb agreement, pronoun"
+      "trap_concept": "시제, 주어-동사 수일치, 관계대명사 오류를 정답으로 배치"
     }
   }
 ]
