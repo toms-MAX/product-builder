@@ -118,15 +118,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         return data.choices[0].message.content;
     }
 
+    function extractJson(raw) {
+        try { return JSON.parse(raw); } catch {}
+        // Extract first {...} block from text (handles markdown fences etc.)
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (match) {
+            try { return JSON.parse(match[0]); } catch {}
+        }
+        throw new Error('AI가 유효한 JSON을 반환하지 않았습니다.');
+    }
+
     async function callGroqJson(systemMsg, userMsg) {
-        const raw = await callGroq(systemMsg, userMsg, true);
+        // First attempt: strict JSON mode
         try {
-            return JSON.parse(raw);
-        } catch {
-            // Try to extract JSON from the response if it includes extra text
-            const match = raw.match(/\{[\s\S]*\}/);
-            if (match) return JSON.parse(match[0]);
-            throw new Error('AI가 유효한 JSON을 반환하지 않았습니다.');
+            const raw = await callGroq(systemMsg, userMsg, true);
+            return extractJson(raw);
+        } catch (e) {
+            // Groq throws "Failed to generate JSON" when the model can't comply
+            if (!e.message.includes('Failed to generate JSON') && !e.message.includes('json')) throw e;
+
+            // Fallback: plain text mode — ask model to output JSON manually
+            const activeLog = genLog || ocrLog;
+            log('JSON mode 실패 → 텍스트 모드로 재시도 중...', 'warn', activeLog);
+            await sleep(800);
+            const fallbackUser = userMsg + '\n\nOutput ONLY a raw JSON object. No markdown, no code fences, no explanation.';
+            const raw = await callGroq(systemMsg, fallbackUser, false);
+            return extractJson(raw);
         }
     }
 
@@ -286,23 +303,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         const text = typeof segment === 'string' ? segment : segment.text;
 
         const result = await callGroqJson(
-            'You are an exam question structure expert. Analyze only the FORMAT and PATTERN, not the content meaning. Return valid JSON only.',
-            `Analyze this Korean/English exam question's STRUCTURAL PATTERN.
+            'You are an exam question structure expert. Analyze only FORMAT and PATTERN, not content. Return valid JSON only.',
+            `Analyze this exam question's structural pattern.
 
-Return JSON with this exact schema (no extra fields):
-{
-  "format": "multiple_choice" | "short_answer" | "fill_in_blank" | "ordering" | "matching",
-  "choice_count": <number, 0 if not multiple choice>,
-  "instruction_text": "<the Korean instruction line if present, else null>",
-  "question_type_ko": "<Korean label for this question type, max 12 chars, e.g: 빈칸 추론, 주제 파악, 어법 오류>",
-  "cognitive_skill": "inference" | "comprehension" | "grammar" | "vocabulary" | "writing",
-  "target_element": "<what the question tests, e.g: underlined_phrase, blank, main_idea, grammar_error>",
-  "choice_language": "korean" | "english" | "english_underlined" | "none"
-}
+Return a JSON object with these exact keys:
+- "format": one of: multiple_choice, short_answer, fill_in_blank, ordering, matching
+- "choice_count": number of answer choices (0 if not multiple choice)
+- "instruction_text": the Korean instruction line if present, otherwise null
+- "question_type_ko": Korean label for this question type, max 12 chars (example: 빈칸 추론, 주제 파악, 어법 오류)
+- "cognitive_skill": one of: inference, comprehension, grammar, vocabulary, writing
+- "target_element": what the question tests (example: underlined_phrase, blank, main_idea, grammar_error)
+- "choice_language": one of: korean, english, english_underlined, none
 
-Question text (first 1200 chars):
+Question text:
 """
-${text.substring(0, 1200)}
+${text.substring(0, 1000)}
 """`
         );
 
@@ -442,20 +457,18 @@ ${text.substring(0, 1200)}
     // Ant 1: Analyze passage — shared across all questions
     async function passageAnalyzerAnt(passage) {
         return await callGroqJson(
-            'You are a concise English text analyst. Return only valid JSON, no extra text.',
-            `Analyze this English passage briefly.
-Return JSON:
-{
-  "main_topic": "<topic in Korean, max 8 words>",
-  "main_idea_ko": "<one-sentence Korean summary>",
-  "tone": "formal" | "informal" | "descriptive" | "narrative" | "argumentative",
-  "key_phrases": ["<notable English phrase 1>", "<phrase 2>", "<phrase 3>"],
-  "key_vocab": [{"word": "...", "meaning_ko": "..."}, ...]
-}
+            'You are a concise English text analyst. Return only valid JSON.',
+            `Analyze this English passage. Return a JSON object with these exact keys:
+- "main_topic": the topic in Korean (5 words max)
+- "main_idea_ko": one-sentence Korean summary of the passage
+- "tone": one of: formal, informal, descriptive, narrative, argumentative
+- "key_phrase_1": a notable English phrase from the passage
+- "key_phrase_2": another notable English phrase
+- "key_phrase_3": another notable English phrase
 
 Passage:
 """
-${passage.substring(0, 2000)}
+${passage.substring(0, 1800)}
 """`
         );
     }
@@ -463,27 +476,20 @@ ${passage.substring(0, 2000)}
     // Ant 2: Plan what to ask — small, focused call
     async function questionPlannerAnt(dna, analysis) {
         const p = dna.pattern;
+        const keyPhrases = [analysis.key_phrase_1, analysis.key_phrase_2, analysis.key_phrase_3].filter(Boolean);
         return await callGroqJson(
             'You are an exam question planner. Be specific and concise. Return valid JSON only.',
-            `Plan ONE "${p.question_type_ko}" question.
+            `Plan ONE question of type "${p.question_type_ko}".
 
-Pattern info:
-- format: ${p.format}
-- what to test: ${p.target}
-- cognitive skill: ${p.cognitive_skill}
-- instruction: "${p.instruction}"
+What to test: ${p.target}
+Cognitive skill needed: ${p.cognitive_skill}
+Passage topic: ${analysis.main_topic}
+Key phrases from passage: ${keyPhrases.join(' / ')}
 
-Passage analysis:
-- topic: ${analysis.main_topic}
-- key phrases: ${JSON.stringify(analysis.key_phrases?.slice(0, 3))}
-- key vocab: ${JSON.stringify(analysis.key_vocab?.slice(0, 4))}
-
-Return JSON:
-{
-  "target_phrase": "<specific phrase or word FROM the passage to focus on, or null>",
-  "question_focus": "<one sentence: exactly what this question will test>",
-  "hint_for_builder": "<one sentence: how to best construct this question>"
-}`
+Return a JSON object with these exact keys:
+- "target_phrase": a specific phrase or word from the passage to focus on (string, or null)
+- "question_focus": one sentence describing exactly what this question will test
+- "hint_for_builder": one sentence on how to construct this question effectively`
         );
     }
 
@@ -494,34 +500,31 @@ Return JSON:
         const choiceCount = p.choice_count || (isMultiChoice ? 5 : 0);
         const choiceLang = p.choice_language === 'korean' ? 'Korean' : 'English';
 
-        const choiceInstruction = isMultiChoice
-            ? `"choices": [<${choiceCount} options in ${choiceLang}: 1 correct + ${choiceCount - 1} plausible distractors>],
-  "correct_answer_index": <0-based index of the correct choice>,`
-            : `"answer": "<the correct answer text>",`;
+        const choiceSpec = isMultiChoice
+            ? `- "choices": an array of ${choiceCount} answer options in ${choiceLang} (1 correct, ${choiceCount - 1} plausible but wrong distractors)
+- "correct_answer_index": the 0-based index of the correct choice in the array`
+            : `- "answer": the correct answer text`;
 
         return await callGroqJson(
             'You are an English exam question writer for Korean middle school students. Write clear, accurate questions. Return valid JSON only.',
-            `Create a "${p.question_type_ko}" question using the passage below.
+            `Create a "${p.question_type_ko}" question based on the passage below.
 
-Question plan:
-- Focus: ${plan.question_focus}
-- Target phrase: ${plan.target_phrase ? `"${plan.target_phrase}"` : 'none'}
-- Builder hint: ${plan.hint_for_builder}
-- Instruction line: "${p.instruction}"
-${p.trap_concept ? `- Trap concept to apply: ${p.trap_concept}` : ''}
+Question focus: ${plan.question_focus}
+Target phrase: ${plan.target_phrase || 'none'}
+Hint: ${plan.hint_for_builder}
+Instruction line: ${p.instruction}
+${p.trap_concept ? 'Trap to apply: ' + p.trap_concept : ''}
 
 Passage:
 """
-${passage.substring(0, 2000)}
+${passage.substring(0, 1800)}
 """
 
-Return JSON:
-{
-  "instruction_text": "${p.instruction}",
-  "question_text": "<question in Korean>",
-  ${choiceInstruction}
-  "explanation_ko": "<2-3 sentence Korean explanation of the correct answer>"
-}`
+Return a JSON object with these exact keys:
+- "instruction_text": the instruction line in Korean
+- "question_text": the question in Korean
+${choiceSpec}
+- "explanation_ko": 2-3 sentence Korean explanation of why the answer is correct`
         );
     }
 
