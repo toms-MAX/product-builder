@@ -1,263 +1,557 @@
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ant Colony - Exam Engine v2.0</title>
-    
-    <!-- External JS Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <title>Ant Colony - Exam Engine v2.1</title>
 
-    <!-- 
-    =================================================================
-    === ALL-IN-ONE STYLESHEET: Embedded to prevent loading issues ===
-    =================================================================
-    -->
+    <!-- Tesseract OCR only — jspdf/html2canvas removed until PDF export is implemented -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
     <style>
+        /* ── Reset & Base ─────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
         :root {
-            --primary-color: #3a7dff;
-            --secondary-color: #6c757d;
-            --success-color: #28a745;
-            --danger-color: #dc3545;
-            --warning-color: #ffc107;
-            --light-color: #f8f9fa;
-            --dark-color: #343a40;
-            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            --border-radius: 0.5rem;
-            --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            --blue:    #4c8bf5;
+            --green:   #28a745;
+            --red:     #dc3545;
+            --yellow:  #ffc107;
+            --gray:    #6c757d;
+            --dark:    #1e1e2e;
+            --panel:   #ffffff;
+            --surface: #f4f6f9;
+            --border:  #dee2e6;
+            --text:    #212529;
+            --muted:   #6c757d;
+            --radius:  8px;
+            --shadow:  0 2px 12px rgba(0,0,0,0.08);
         }
 
         body {
-            font-family: var(--font-family);
-            margin: 0;
-            background-color: #f0f2f5;
-            color: var(--dark-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background: var(--surface);
+            color: var(--text);
             line-height: 1.6;
+            font-size: 15px;
         }
 
-        .header {
-            background-color: #ffffff;
-            padding: 1rem 2rem;
-            border-bottom: 1px solid #dee2e6;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header h1 {
-            margin: 0;
-            font-size: 1.5rem;
-            color: var(--primary-color);
-        }
-        
-        .version-display {
-            font-size: 0.8rem;
-            font-weight: 600;
-            padding: 0.3rem 0.6rem;
-            background-color: var(--primary-color);
-            color: white;
-            border-radius: 1rem;
-        }
-
-        .main-container {
-            max-width: 1400px;
-            margin: 2rem auto;
+        /* ── Header ──────────────────────────────────── */
+        .site-header {
+            background: var(--dark);
+            color: #fff;
             padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            min-height: 60px;
+        }
+
+        .site-header h1 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            white-space: nowrap;
+            color: #fff;
+        }
+
+        .version-pill {
+            font-size: 0.72rem;
+            font-weight: 700;
+            background: var(--blue);
+            color: #fff;
+            border-radius: 999px;
+            padding: 2px 10px;
+        }
+
+        /* API Key bar inside header */
+        .api-key-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-left: auto;
+            flex-wrap: wrap;
+        }
+
+        .api-key-bar label {
+            font-size: 0.8rem;
+            color: #ccc;
+            white-space: nowrap;
+        }
+
+        #api-key-input {
+            padding: 0.35rem 0.6rem;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #2a2a3e;
+            color: #fff;
+            font-size: 0.85rem;
+            width: 220px;
+        }
+
+        #save-key-btn {
+            padding: 0.35rem 0.8rem;
+            background: var(--blue);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        #save-key-btn:hover { background: #3a7de0; }
+
+        #key-status {
+            font-size: 0.8rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        #api-call-counter {
+            font-size: 0.75rem;
+            color: #aaa;
+            white-space: nowrap;
+        }
+
+        /* ── Main Grid ───────────────────────────────── */
+        .main-grid {
+            max-width: 1440px;
+            margin: 1.5rem auto;
+            padding: 0 1.5rem;
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 2rem;
+            gap: 1.5rem;
+            align-items: start;
         }
 
-        .section-container {
-            background-color: #ffffff;
-            padding: 2rem;
-            border-radius: var(--border-radius);
-            box-shadow: var(--box-shadow);
+        @media (max-width: 900px) {
+            .main-grid { grid-template-columns: 1fr; }
         }
 
-        .section-container h2 {
-            margin-top: 0;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 1rem;
+        /* ── Panel ───────────────────────────────────── */
+        .panel {
+            background: var(--panel);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .panel-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 1.5rem;
             display: flex;
             align-items: center;
             gap: 0.5rem;
         }
 
-        /* --- Forms & Buttons --- */
-        .form-group {
-            margin-bottom: 1.5rem;
+        .panel-header h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin: 0;
         }
 
-        .form-group label {
+        .panel-body { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem; }
+
+        /* ── Step blocks ─────────────────────────────── */
+        .step {
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        .step-title {
+            background: var(--surface);
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .step-body { padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+
+        /* ── Form controls ───────────────────────────── */
+        label.field-label {
             display: block;
-            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
             font-weight: 600;
+            margin-bottom: 0.3rem;
         }
 
         input[type="file"],
         input[type="number"],
         textarea {
             width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #ced4da;
-            border-radius: 0.25rem;
-            box-sizing: border-box;
+            padding: 0.6rem 0.8rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
             font-family: inherit;
+            font-size: 0.9rem;
+            background: #fff;
         }
 
         textarea {
-            min-height: 120px;
+            min-height: 130px;
             resize: vertical;
         }
 
+        input[type="number"] { width: 80px; }
+
+        /* ── Buttons ─────────────────────────────────── */
         .btn {
-            display: inline-block;
-            padding: 0.75rem 1.5rem;
-            border: none;
-            border-radius: 0.25rem;
-            font-size: 1rem;
-            font-weight: 600;
-            color: #fff;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.2s;
-        }
-        .btn-primary { background-color: var(--primary-color); }
-        .btn-primary:hover { background-color: #0056b3; }
-        .btn-full { width: 100%; }
-
-        /* --- Specific Components --- */
-        #image-preview-container {
-            width: 100%;
-            min-height: 200px;
-            border: 2px dashed #ced4da;
-            border-radius: 0.25rem;
-            display: flex;
-            justify-content: center;
+            display: inline-flex;
             align-items: center;
-            margin-top: 1rem;
-            background-color: #f8f9fa;
+            justify-content: center;
+            gap: 0.4rem;
+            padding: 0.65rem 1.2rem;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.15s, opacity 0.15s;
+            width: 100%;
         }
-        #image-preview {
-            max-width: 100%;
-            max-height: 400px;
-            object-fit: contain;
+        .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+        .btn-primary { background: var(--blue); color: #fff; }
+        .btn-primary:hover:not(:disabled) { background: #3a7de0; }
+        .btn-success { background: var(--green); color: #fff; }
+        .btn-success:hover:not(:disabled) { background: #218838; }
+
+        /* ── Image preview ───────────────────────────── */
+        #image-preview-container {
+            border: 2px dashed var(--border);
+            border-radius: 4px;
+            min-height: 140px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--surface);
+            overflow: hidden;
         }
 
+        #image-preview { max-width: 100%; max-height: 280px; object-fit: contain; display: none; }
+
+        .preview-hint { color: var(--muted); font-size: 0.85rem; }
+
+        /* ── Log box ─────────────────────────────────── */
         .log-box {
-            height: 150px;
-            background-color: #212529;
-            color: #f8f9fa;
-            padding: 1rem;
-            border-radius: 0.25rem;
+            height: 140px;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            padding: 0.75rem 1rem;
+            border-radius: 4px;
             overflow-y: auto;
-            font-family: "SF Mono", "Fira Code", monospace;
-            font-size: 0.875rem;
-            line-height: 1.5;
+            font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+            font-size: 0.78rem;
+            line-height: 1.6;
         }
 
-        #dna-selection-container {
-            height: 180px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 1rem;
-            background-color: #fdfdff;
+        /* ── Learned DNA list ────────────────────────── */
+        #learned-dna-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
         }
+
+        .learned-tag {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.5rem 0.75rem;
+            background: #edf4ff;
+            border: 1px solid #c5d8ff;
+            border-radius: 4px;
+        }
+
+        .tag-num {
+            background: var(--blue);
+            color: #fff;
+            font-size: 0.72rem;
+            font-weight: 700;
+            border-radius: 999px;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .tag-info strong { font-size: 0.85rem; display: block; }
+        .tag-info small  { color: var(--muted); font-size: 0.75rem; }
+
+        /* ── DNA Checkboxes ──────────────────────────── */
+        #dna-selection-container {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.5rem;
+            background: #fafafa;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+
         .dna-checkbox-item {
-            display: block;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .dna-checkbox-item:hover { background: #f0f4ff; }
+
+        .dna-source-badge { font-size: 1rem; }
+
+        .dna-label-text strong { font-size: 0.88rem; display: block; line-height: 1.2; }
+        .dna-label-text small  { color: var(--muted); font-size: 0.75rem; }
+
+        /* ── Generated question cards ────────────────── */
+        #generated-questions { display: flex; flex-direction: column; gap: 1rem; }
+
+        .question-card {
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--blue);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            background: #fff;
+        }
+
+        .warning-card { border-left-color: var(--yellow); color: var(--muted); }
+
+        .question-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .q-num {
+            font-weight: 800;
+            font-size: 0.95rem;
+            color: var(--blue);
+        }
+
+        .q-type-badge {
+            font-size: 0.72rem;
+            font-weight: 700;
+            background: #edf4ff;
+            color: var(--blue);
+            border-radius: 999px;
+            padding: 2px 10px;
+        }
+
+        .copy-btn {
+            margin-left: auto;
+            padding: 0.25rem 0.7rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .copy-btn:hover { background: #e9ecef; }
+
+        .q-instruction {
+            font-size: 0.82rem;
+            color: var(--muted);
             margin-bottom: 0.5rem;
         }
 
-        #generated-questions .question-card {
-            margin-top: 1.5rem;
-            background-color: #f8f9fa;
-            border-left: 5px solid var(--primary-color);
-            padding: 1.5rem;
-            border-radius: 0.25rem;
+        .passage-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.75rem 1rem;
+            font-size: 0.88rem;
+            line-height: 1.7;
+            margin-bottom: 0.75rem;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .q-text {
+            font-weight: 600;
+            margin-bottom: 0.6rem;
+        }
+
+        .choices-list {
+            padding-left: 1.2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            font-size: 0.9rem;
+        }
+
+        .answer-wrap {
+            margin-top: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .answer-wrap summary {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+            background: var(--surface);
+            user-select: none;
+        }
+
+        .answer-body {
+            padding: 0.75rem 1rem;
+            font-size: 0.88rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        /* ── Misc ────────────────────────────────────── */
+        .muted { color: var(--muted); font-size: 0.85rem; }
+
+        .row-inline {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
         }
     </style>
 </head>
 <body>
 
-    <header class="header">
-        <h1>🐜 Ant Colony - Exam Engine</h1>
-        <span class="version-display">v2.0 REBORN</span>
-    </header>
+<!-- ══════════════════════════════════════════════════════
+     HEADER — API Key always visible at top
+════════════════════════════════════════════════════════ -->
+<header class="site-header">
+    <h1>🐜 Ant Colony</h1>
+    <span class="version-pill">v2.1</span>
 
-    <main class="main-container">
-        
-        <!-- Section 1: DNA Extraction Engine -->
-        <section class="section-container" id="dna-extractor">
-            <h2>🔬 DNA 추출 엔진</h2>
-            
-            <div class="form-group">
-                <label for="image-upload">1. 시험지 이미지 업로드</label>
-                <input type="file" id="image-upload" accept="image/*">
-            </div>
+    <div class="api-key-bar">
+        <label for="api-key-input">Groq API Key</label>
+        <input type="password" id="api-key-input" placeholder="gsk_...">
+        <button id="save-key-btn">저장</button>
+        <span id="key-status"></span>
+        <span id="api-call-counter">API 호출: 0회</span>
+    </div>
+</header>
 
-            <div id="image-preview-container">
-                <img id="image-preview" src="" alt="이미지 미리보기">
-            </div>
+<!-- ══════════════════════════════════════════════════════
+     MAIN GRID
+════════════════════════════════════════════════════════ -->
+<main class="main-grid">
 
-            <div class="form-group" style="margin-top: 1.5rem;">
-                <button id="full-auto-extract-btn" class="btn btn-primary btn-full">🚀 DNA 자동 추출 (Full Auto)</button>
-            </div>
-            
-            <div class="form-group">
-                <label for="ocr-log">추출 로그</label>
-                <div id="ocr-log" class="log-box">시스템 대기 중...</div>
-            </div>
+    <!-- ════════════════════════════════════════
+         LEFT PANEL: DNA Learning (Image → Patterns)
+    ════════════════════════════════════════ -->
+    <section class="panel" id="dna-extractor">
+        <div class="panel-header">
+            <span>🔬</span>
+            <h2>유형 학습 엔진</h2>
+        </div>
 
-            <div class="form-group">
-                <label for="final-dna-result">추출된 DNA 최종 결과</label>
-                <textarea id="final-dna-result" readonly></textarea>
-            </div>
+        <div class="panel-body">
 
-            <button id="load-to-bank-btn" class="btn btn-success btn-full" style="background-color: #28a745;">🧬 추출된 DNA를 문제 생성 지문으로 로드</button>
-        </section>
-
-        <!-- Section 2: Problem Generation Factory -->
-        <section class="section-container" id="problem-generator">
-            <h2>🏭 문제 생성 공장</h2>
-
-            <div class="form-group">
-                <label for="reading-material">1. 시험 지문</label>
-                <textarea id="reading-material" placeholder="DNA를 추출하여 로드하거나, 여기에 직접 지문을 입력하세요..."></textarea>
-            </div>
-
-            <div class="form-group">
-                <label for="dna-selection-container">2. 생성할 문제 유형 (DNA) 선택</label>
-                <div id="dna-selection-container">
-                    <p style="color: #888;">문제 유형(DNA) 로딩 중...</p>
+            <!-- Step 1: Upload -->
+            <div class="step">
+                <div class="step-title">STEP 1 &mdash; 시험지 이미지 업로드</div>
+                <div class="step-body">
+                    <input type="file" id="image-upload" accept="image/*">
+                    <div id="image-preview-container">
+                        <img id="image-preview" alt="미리보기">
+                        <span class="preview-hint">이미지를 선택하면 여기에 표시됩니다</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="form-group">
-                <label for="predict-count">3. 생성할 문항 수</label>
-                <input type="number" id="predict-count" min="1" max="10" value="1">
+            <!-- Step 2: Run Learning -->
+            <div class="step">
+                <div class="step-title">STEP 2 &mdash; 유형 자동 학습</div>
+                <div class="step-body">
+                    <p class="muted">업로드한 시험지에서 문제 유형(패턴)을 자동으로 분석합니다. OCR → 분리 → 유형 분석의 3단계로 진행됩니다.</p>
+                    <button id="full-auto-extract-btn" class="btn btn-primary">🚀 시험지 분석 &amp; 유형 학습</button>
+                    <div id="ocr-log" class="log-box">대기 중...</div>
+                </div>
             </div>
 
-            <button id="generate-btn" class="btn btn-primary btn-full">⚙️ 개미 군집 가동 (문제 생성)</button>
-
-            <div class="form-group" style="margin-top: 1.5rem;">
-                <label for="compute-log">🐜 개미 실시간 작업 현황</label>
-                <div id="compute-log" class="log-box">작업 대기 중...</div>
+            <!-- Step 3: Learned Results -->
+            <div class="step">
+                <div class="step-title">STEP 3 &mdash; 학습된 유형 확인 &amp; 적용</div>
+                <div class="step-body">
+                    <div id="learned-dna-list">
+                        <p class="muted">학습 후 여기에 발견된 유형이 표시됩니다.</p>
+                    </div>
+                    <button id="load-to-bank-btn" class="btn btn-success">🧬 학습된 유형을 문제 생성기에 적용</button>
+                </div>
             </div>
 
-            <div id="generated-questions">
-                <!-- Dynamically generated questions will appear here -->
-            </div>
-        </section>
-    </main>
-    
-    <!-- Load the engine, with cache busting for good measure -->
-    <script src="colony_engine.js?v=2.0.0"></script>
+        </div>
+    </section>
 
+    <!-- ════════════════════════════════════════
+         RIGHT PANEL: Question Generation
+    ════════════════════════════════════════ -->
+    <section class="panel" id="problem-generator">
+        <div class="panel-header">
+            <span>🏭</span>
+            <h2>문제 생성 공장</h2>
+        </div>
+
+        <div class="panel-body">
+
+            <!-- Step 1: Passage -->
+            <div class="step">
+                <div class="step-title">STEP 1 &mdash; 영어 지문 입력</div>
+                <div class="step-body">
+                    <textarea id="reading-material" placeholder="여기에 영어 지문을 직접 입력하거나 붙여넣기 하세요...&#10;&#10;예) The Amazon rainforest is often called the lungs of the Earth..."></textarea>
+                </div>
+            </div>
+
+            <!-- Step 2: Select DNA types -->
+            <div class="step">
+                <div class="step-title">STEP 2 &mdash; 문제 유형 선택</div>
+                <div class="step-body">
+                    <p class="muted" style="font-size:0.78rem;">📚 = 기본 내장 유형 &nbsp;|&nbsp; 🎓 = 시험지에서 학습된 유형</p>
+                    <div id="dna-selection-container">
+                        <p class="muted">유형 로딩 중...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Count -->
+            <div class="step">
+                <div class="step-title">STEP 3 &mdash; 생성 문항 수</div>
+                <div class="step-body">
+                    <div class="row-inline">
+                        <label class="field-label" for="predict-count">유형당 문항 수</label>
+                        <input type="number" id="predict-count" min="1" max="5" value="1">
+                        <span class="muted" style="font-size:0.8rem;">최대 5문항</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generate -->
+            <button id="generate-btn" class="btn btn-primary">⚙️ 개미 군집 가동 (문제 생성)</button>
+
+            <!-- Log -->
+            <div id="compute-log" class="log-box">대기 중...</div>
+
+            <!-- Results -->
+            <div id="generated-questions"></div>
+
+        </div>
+    </section>
+
+</main>
+
+<script src="colony_engine.js?v=2.1.0"></script>
 </body>
 </html>

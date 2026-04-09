@@ -1,368 +1,680 @@
-
+/**
+ * Ant Colony - Exam Engine v2.1
+ * Architecture: Multi-Ant Pipeline
+ *   - Each "ant" is one tiny, focused AI call
+ *   - Complex tasks are assembled from simple outputs
+ *   - Designed for lightweight/free-tier AI models
+ */
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Ant Colony v2.0.2 (ULTRA-STABLE) Initialized');
+    console.log('[Ant Colony v2.1] Multi-Ant Pipeline Online');
 
-    // --- Configuration ---
-    const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-    const MODEL_NAME = 'llama-3.1-8b-instant';
-    const RATE_LIMIT_DELAY = 1000; // 1 second delay between generations
-    let currentApiKey = localStorage.getItem('groq_api_key') || '';
-    let problemDNADatabase = [];
+    // =====================================================
+    // CONFIG
+    // =====================================================
+    const API_URL   = 'https://api.groq.com/openai/v1/chat/completions';
+    const MODEL     = 'llama-3.1-8b-instant';
+    const DELAY_MS  = 1300; // pause between API calls (free tier safety)
 
-    // --- Utility to introduce delay ---
-    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    let apiKey = localStorage.getItem('groq_api_key') || '';
+    let dnaBank = [];          // all known DNA templates
+    let learnedDNAs = [];      // DNAs extracted in current session
 
-    // --- DOM Elements (v2.0 Mapping) ---
-    // ... (DOM elements remain the same, so they are omitted for brevity) ...
-    const apiKeyInput = document.getElementById('api-key-input');
-    const saveKeyBtn = document.getElementById('save-key-btn');
-    const imageUpload = document.getElementById('image-upload');
-    const fullAutoExtractBtn = document.getElementById('full-auto-extract-btn');
-    const imagePreview = document.getElementById('image-preview');
-    const ocrLog = document.getElementById('ocr-log');
-    const finalDnaResult = document.getElementById('final-dna-result');
-    const loadToBankBtn = document.getElementById('load-to-bank-btn');
-    const readingMaterial = document.getElementById('reading-material');
-    const generateBtn = document.getElementById('generate-btn');
-    const resultContainer = document.getElementById('generated-questions');
-    const computeLog = document.getElementById('compute-log');
-    const dnaSelectionContainer = document.getElementById('dna-selection-container');
-    const predictCountInput = document.getElementById('predict-count');
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+    // =====================================================
+    // DOM REFS
+    // =====================================================
+    const $ = id => document.getElementById(id);
 
-    // --- Log Utility ---
-    function log(msg, type = 'info', targetLogElement) {
-        const colorMap = { 
-            info: '#9ab', 
-            error: '#ff6b6b', 
-            success: '#63e6be', 
-            ant: '#5c7cfa', 
-            master: '#fcc419',
-            auditor: '#f06595' 
+    const apiKeyInput       = $('api-key-input');
+    const saveKeyBtn        = $('save-key-btn');
+    const keyStatus         = $('key-status');
+    const imageUpload       = $('image-upload');
+    const imagePreview      = $('image-preview');
+    const previewWrap       = $('image-preview-container');
+    const learnBtn          = $('full-auto-extract-btn');
+    const ocrLog            = $('ocr-log');
+    const learnedList       = $('learned-dna-list');
+    const loadToBankBtn     = $('load-to-bank-btn');
+    const passageArea       = $('reading-material');
+    const dnaContainer      = $('dna-selection-container');
+    const countInput        = $('predict-count');
+    const generateBtn       = $('generate-btn');
+    const genLog            = $('compute-log');
+    const resultContainer   = $('generated-questions');
+    const apiCallCounter    = $('api-call-counter');
+
+    let totalApiCalls = 0;
+
+    // =====================================================
+    // LOGGER
+    // =====================================================
+    const COLORS = {
+        info:    '#8babd4',
+        error:   '#ff6b6b',
+        success: '#63e6be',
+        ant:     '#748ffc',
+        master:  '#fcc419',
+        auditor: '#f783ac',
+        warn:    '#ffa94d'
+    };
+
+    function log(msg, type = 'info', target = genLog) {
+        if (!target) return;
+        const el = document.createElement('div');
+        el.style.cssText = `color:${COLORS[type] || COLORS.info}; margin:1px 0; word-break:break-word;`;
+        el.textContent = `[${type.toUpperCase()}] ${msg}`;
+        target.appendChild(el);
+        target.scrollTop = target.scrollHeight;
+    }
+
+    function clearLog(target) { if (target) target.innerHTML = ''; }
+
+    // =====================================================
+    // API CALL COUNTER
+    // =====================================================
+    function bumpCounter() {
+        totalApiCalls++;
+        if (apiCallCounter) apiCallCounter.textContent = `API 호출: ${totalApiCalls}회`;
+    }
+
+    // =====================================================
+    // GROQ API — system + user message pattern
+    // =====================================================
+    async function callGroq(systemMsg, userMsg, asJson = false) {
+        if (!apiKey) throw new Error('API Key가 설정되지 않았습니다. 상단에서 저장해주세요.');
+
+        const messages = [];
+        if (systemMsg) messages.push({ role: 'system', content: systemMsg });
+        messages.push({ role: 'user', content: userMsg });
+
+        const body = {
+            model: MODEL,
+            messages,
+            temperature: asJson ? 0.2 : 0.6,
+            max_tokens: asJson ? 1024 : 512,
+            stream: false
         };
-        const logHtml = `<div style="color: ${colorMap[type]};">[${type.toUpperCase()}] ${msg}</div>`;
-        targetLogElement.innerHTML += logHtml;
-        targetLogElement.scrollTop = targetLogElement.scrollHeight;
-    }
+        if (asJson) body.response_format = { type: 'json_object' };
 
-    // --- Initialization ---
-    async function init() {
-        log('Engine core systems are online.', 'info', ocrLog);
-        log('Awaiting your command.', 'info', computeLog);
-        
-        try {
-            const resp = await fetch('questions.json');
-            if (!resp.ok) throw new Error(`HTTP error! status: ${resp.status}`);
-            problemDNADatabase = await resp.json();
-            renderDNACheckboxes();
-            log(`DNA Bank loaded: ${problemDNADatabase.length} structures ready.`, 'success', computeLog);
-        } catch (e) {
-            log(`CRITICAL: Failed to load DNA Bank (questions.json). ${e.message}`, 'error', computeLog);
-        }
-        setupEventListeners();
-    }
-
-    function setupEventListeners() {
-        const dynamicApiKeyInput = document.getElementById('api-key-input');
-        const dynamicSaveKeyBtn = document.getElementById('save-key-btn');
-
-        if (dynamicSaveKeyBtn) dynamicSaveKeyBtn.onclick = () => {
-            currentApiKey = dynamicApiKeyInput.value;
-            localStorage.setItem('groq_api_key', currentApiKey);
-            log('API Key has been securely stored in your browser.', 'success', computeLog);
-            dynamicApiKeyInput.style.borderColor = 'green';
-        };
-        if (dynamicApiKeyInput) {
-             dynamicApiKeyInput.value = currentApiKey;
-        }
-        
-        if (imageUpload) imageUpload.onchange = handleImageUpload;
-        if (fullAutoExtractBtn) fullAutoExtractBtn.onclick = runFullAutomation;
-        if (loadToBankBtn) loadToBankBtn.onclick = loadExtractedDNA;
-        if (generateBtn) generateBtn.onclick = generationPipeline;
-    }
-    
-    // --- Groq API Call ---
-    async function callGroq(prompt, isJson = false) {
-        if (!currentApiKey) {
-            throw new Error('Groq API Key is not set. Please save your key in the "Problem Generation Factory".');
-        }
-        const response = await fetch(API_URL, {
+        const res = await fetch(API_URL, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${currentApiKey}`,
+                'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                messages: [{ role: 'user', content: prompt }],
-                model: MODEL_NAME,
-                temperature: 0.7,
-                max_tokens: 2048,
-                top_p: 1,
-                stop: null,
-                stream: false,
-                response_format: isJson ? { type: 'json_object' } : null,
-            })
+            body: JSON.stringify(body)
         });
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`Groq API Error: ${errorData.error.message}`);
+
+        bumpCounter();
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            const msg = err.error?.message || `HTTP ${res.status}`;
+            throw new Error(`Groq API 오류: ${msg}`);
         }
-        const data = await response.json();
+
+        const data = await res.json();
         return data.choices[0].message.content;
     }
 
-    // --- DNA EXTRACTION ENGINE (Section 1) ---
-    // ... (This section remains the same, so it's omitted for brevity) ...
-    function handleImageUpload(event) {
-        const file = event.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => { 
-                imagePreview.src = e.target.result; 
-                imagePreview.style.display = 'block';
-            };
-            reader.readAsDataURL(file);
-            log('Image selected for analysis.', 'info', ocrLog);
+    async function callGroqJson(systemMsg, userMsg) {
+        const raw = await callGroq(systemMsg, userMsg, true);
+        try {
+            return JSON.parse(raw);
+        } catch {
+            // Try to extract JSON from the response if it includes extra text
+            const match = raw.match(/\{[\s\S]*\}/);
+            if (match) return JSON.parse(match[0]);
+            throw new Error('AI가 유효한 JSON을 반환하지 않았습니다.');
         }
     }
 
-    async function runFullAutomation() {
-        log('--- MASTER ANT: Full Automation Sequence Initiated ---', 'master', ocrLog);
-        fullAutoExtractBtn.disabled = true;
-        fullAutoExtractBtn.innerText = 'Colony is Active...';
-        ocrLog.innerHTML = ''; // Clear previous logs
-
-        try {
-            const file = imageUpload.files[0];
-            if (!file) throw new Error('No image file uploaded.');
-            
-            log('[1/4] Ant OCR worker dispatched...', 'ant', ocrLog);
-            const worker = await Tesseract.createWorker('eng+kor', 1, { 
-                logger: m => log(`${m.status} (${(m.progress * 100).toFixed(1)}%)`, 'ant', ocrLog) 
-            });
-            const { data: { text } } = await worker.recognize(file);
-            await worker.terminate();
-            log('OCR extraction successful.', 'success', ocrLog);
-
-            log('[2/4] Ant Layout-Parser analyzing text structure...', 'ant', ocrLog);
-            const regex = /(?=\n\d+\. |^\d+\. )/g;
-            const problemBlocks = text.split(regex).filter(block => block.trim() !== '');
-            if (problemBlocks.length === 0) throw new Error('Layout parser found no problem blocks.');
-            log(`Layout analysis successful: ${problemBlocks.length} blocks found.`, 'success', ocrLog);
-
-            log('[3/4] Ant DNA-Assembler creating genetic codes...', 'ant', ocrLog);
-            const finalDNAs = [];
-            const masterDNA = problemDNADatabase[0]; 
-            for (let i = 0; i < problemBlocks.length; i++) {
-                log(`Assembling DNA for block ${i + 1}/${problemBlocks.length}...`, 'ant', ocrLog);
-                let prompt = `You are a super-intelligent DNA assembler ant. Your task is to analyze a given \"Problem Block Text\" and convert it into a structured JSON object. This JSON must strictly follow the format of the provided \"Master DNA Template\". Do not invent new fields. Fill in the values based on your analysis of the problem block. For fields like 'choices', 'answer', or if some information isn't available in the block, use a null value. Your output must be only the final JSON object.\n\n--- Master DNA Template ---\n${JSON.stringify(masterDNA, null, 2)}\n\n--- Problem Block Text ---\n\"\"\"\n${problemBlocks[i]}\n\"\"\"`;
-                prompt += "\n\nYour final output must be a single, valid JSON object.";
-                const jsonResponse = await callGroq(prompt, true);
-                let generatedDNA = JSON.parse(jsonResponse);
-                 // Data Standardization
-                if (!generatedDNA.content) {
-                    log('Assembler Ant: Detected non-standard format. Standardizing now.', 'ant', ocrLog);
-                    generatedDNA = { content: generatedDNA };
-                }
-                generatedDNA.meta.problem_id = `extracted-${Date.now()}-${i}`;
-                generatedDNA.meta.source = 'auto-extracted';
-                generatedDNA.content.passage_text = "(Extracted from image)";
-                finalDNAs.push(generatedDNA);
-                await sleep(RATE_LIMIT_DELAY);
-            }
-            log('DNA assembly successful.', 'success', ocrLog);
-
-            finalDnaResult.value = JSON.stringify(finalDNAs, null, 2);
-            log('[4/4] --- MASTER ANT: Automation Complete. Final DNA is ready. ---', 'master', ocrLog);
-
-        } catch (error) {
-            log(`PIPELINE HALTED: ${error.message}`, 'error', ocrLog);
-            log('ADVICE: Please check image quality, API key, or text format.', 'master', ocrLog);
-        } finally {
-            fullAutoExtractBtn.disabled = false;
-            fullAutoExtractBtn.innerText = '🚀 DNA 자동 추출 (Full Auto)';
+    // =====================================================
+    // INIT
+    // =====================================================
+    async function init() {
+        // Restore API key
+        if (apiKeyInput) {
+            apiKeyInput.value = apiKey;
+            setKeyStatus(!!apiKey);
         }
-    }
-     function loadExtractedDNA() {
-        const jsonString = finalDnaResult.value;
-        if (!jsonString) {
-            log('No extracted DNA to load. Extract DNA from an image first.', 'error', computeLog);
-            return;
-        }
-        try {
-            const parsed = JSON.parse(jsonString);
-            const newDNAs = Array.isArray(parsed) ? parsed : [parsed];
 
-            if (newDNAs.length === 0) throw new Error('Parsed data is empty.');
-            
-            problemDNADatabase.unshift(...newDNAs);
+        // Load built-in DNA templates
+        try {
+            const resp = await fetch('questions.json');
+            if (!resp.ok) throw new Error('questions.json 없음');
+            dnaBank = await resp.json();
             renderDNACheckboxes();
-            
-            log(`${newDNAs.length} new DNA strand(s) loaded into the Generator!`, 'success', computeLog);
-            
-            if(newDNAs[0].content && newDNAs[0].content.passage_text && newDNAs[0].content.passage_text !== "(Extracted from image)") {
-                readingMaterial.value = newDNAs[0].content.passage_text;
-                log('Loaded first passage into the text area.', 'info', computeLog);
+            log(`DNA 뱅크 로드: ${dnaBank.length}개 기본 유형 준비됨.`, 'success', genLog);
+        } catch (e) {
+            log(`DNA 뱅크 로드 실패: ${e.message}`, 'error', genLog);
+        }
+
+        bindEvents();
+    }
+
+    function bindEvents() {
+        if (saveKeyBtn)    saveKeyBtn.onclick    = saveKey;
+        if (imageUpload)   imageUpload.onchange  = previewImage;
+        if (learnBtn)      learnBtn.onclick       = runLearningPipeline;
+        if (loadToBankBtn) loadToBankBtn.onclick  = loadLearnedDNAs;
+        if (generateBtn)   generateBtn.onclick    = runGenerationPipeline;
+    }
+
+    function saveKey() {
+        apiKey = (apiKeyInput?.value || '').trim();
+        localStorage.setItem('groq_api_key', apiKey);
+        setKeyStatus(!!apiKey);
+        log('API Key 저장 완료.', 'success', genLog);
+    }
+
+    function setKeyStatus(valid) {
+        if (!keyStatus) return;
+        keyStatus.textContent = valid ? '✓ 저장됨' : '✗ 없음';
+        keyStatus.style.color = valid ? '#63e6be' : '#ff6b6b';
+    }
+
+    function previewImage(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            if (imagePreview) {
+                imagePreview.src = ev.target.result;
+                imagePreview.style.display = 'block';
             }
-        } catch (error) {
-            log(`Failed to load DNA: ${error.message}. Make sure it's valid JSON.`, 'error', computeLog);
+        };
+        reader.readAsDataURL(file);
+        log(`이미지 선택: ${file.name}`, 'info', ocrLog);
+    }
+
+    // =====================================================
+    // PIPELINE A: DNA LEARNING  (Image → Patterns)
+    // =====================================================
+    /**
+     * Ant 1: OCR (Tesseract - no API call)
+     * Ant 2: Segmenter (split text into question blocks)
+     * Ant 3: Pattern Analyzer per block (1 API call each)
+     * → produces DNA templates for the generator
+     */
+    async function runLearningPipeline() {
+        clearLog(ocrLog);
+        if (learnedList) learnedList.innerHTML = '';
+        learnedDNAs = [];
+        setBtn(learnBtn, false, '🐜 학습 중...');
+
+        try {
+            const file = imageUpload?.files[0];
+            if (!file) throw new Error('이미지를 먼저 업로드해주세요.');
+
+            // ── Ant 1: OCR ──────────────────────────────────
+            log('[1/3] OCR 개미 투입 중...', 'ant', ocrLog);
+            const rawText = await ocrAnt(file);
+            if (!rawText.trim()) throw new Error('OCR 결과가 비었습니다. 이미지 품질을 확인해주세요.');
+            log(`OCR 완료 (${rawText.length}자 추출).`, 'success', ocrLog);
+
+            // ── Ant 2: Segmentation ──────────────────────────
+            log('[2/3] 문제 분리 개미 투입 중...', 'ant', ocrLog);
+            const segments = segmentText(rawText);
+            log(`${segments.length}개 문제 블록 분리 완료.`, 'success', ocrLog);
+            if (segments.length === 0) throw new Error('문제 블록을 찾지 못했습니다. OCR 결과를 확인해주세요.');
+
+            // ── Ant 3: Pattern Analysis per segment ──────────
+            log('[3/3] 유형 분석 개미 투입 중...', 'ant', ocrLog);
+            const seen = new Set(); // deduplicate by question_type_ko
+
+            for (let i = 0; i < segments.length; i++) {
+                log(`  유형 분석 ${i + 1}/${segments.length}...`, 'ant', ocrLog);
+                try {
+                    const dna = await patternAnalysisAnt(segments[i], i);
+                    if (dna) {
+                        const key = dna.meta.question_type_ko;
+                        if (!seen.has(key)) {
+                            seen.add(key);
+                            learnedDNAs.push(dna);
+                            log(`  ✓ 새 유형 발견: "${key}"`, 'success', ocrLog);
+                        } else {
+                            log(`  중복 유형 스킵: "${key}"`, 'info', ocrLog);
+                        }
+                    }
+                } catch (e) {
+                    log(`  분석 실패 (블록 ${i + 1}): ${e.message}`, 'warn', ocrLog);
+                }
+                if (i < segments.length - 1) await sleep(DELAY_MS);
+            }
+
+            renderLearnedDNAs(learnedDNAs);
+            log(`── 학습 완료! ${learnedDNAs.length}개 신규 유형 발견 ──`, 'master', ocrLog);
+
+        } catch (err) {
+            log(`파이프라인 중단: ${err.message}`, 'error', ocrLog);
+        } finally {
+            setBtn(learnBtn, true, '🚀 시험지 분석 & 유형 학습');
         }
     }
 
-    // --- PROBLEM GENERATION FACTORY (Section 2) ---
-    function renderDNACheckboxes() {
-        dnaSelectionContainer.innerHTML = '';
-        if (problemDNADatabase.length === 0) {
-            dnaSelectionContainer.innerHTML = '<p style="color: #888;">No DNA found. Load from questions.json or extract from an image.</p>';
+    // Ant 1: OCR via Tesseract
+    async function ocrAnt(file) {
+        const worker = await Tesseract.createWorker('eng+kor', 1, {
+            logger: m => {
+                if (m.progress > 0 && m.status !== 'initializing api') {
+                    log(`OCR: ${m.status} ${(m.progress * 100).toFixed(0)}%`, 'ant', ocrLog);
+                }
+            }
+        });
+        const { data: { text } } = await worker.recognize(file);
+        await worker.terminate();
+        return text;
+    }
+
+    // Ant 2: Rule-based segmentation (no API call needed)
+    function segmentText(raw) {
+        // Match lines starting with a number followed by . or ) or 、
+        const parts = raw.split(/(?=\n\s*\d+\s*[.)\、]\s)/).map(s => s.trim()).filter(s => s.length > 30);
+        if (parts.length >= 2) return parts.map((text, i) => ({ number: i + 1, text }));
+
+        // Fallback: split by double newline and pick chunks that look like questions
+        return raw.split(/\n{2,}/)
+            .map(s => s.trim())
+            .filter(s => s.length > 40 && /[?？①②③④⑤]/.test(s))
+            .map((text, i) => ({ number: i + 1, text }));
+    }
+
+    // Ant 3: Analyze ONE question block → DNA template (1 API call)
+    async function patternAnalysisAnt(segment, idx) {
+        const text = typeof segment === 'string' ? segment : segment.text;
+
+        const result = await callGroqJson(
+            'You are an exam question structure expert. Analyze only the FORMAT and PATTERN, not the content meaning. Return valid JSON only.',
+            `Analyze this Korean/English exam question's STRUCTURAL PATTERN.
+
+Return JSON with this exact schema (no extra fields):
+{
+  "format": "multiple_choice" | "short_answer" | "fill_in_blank" | "ordering" | "matching",
+  "choice_count": <number, 0 if not multiple choice>,
+  "instruction_text": "<the Korean instruction line if present, else null>",
+  "question_type_ko": "<Korean label for this question type, max 12 chars, e.g: 빈칸 추론, 주제 파악, 어법 오류>",
+  "cognitive_skill": "inference" | "comprehension" | "grammar" | "vocabulary" | "writing",
+  "target_element": "<what the question tests, e.g: underlined_phrase, blank, main_idea, grammar_error>",
+  "choice_language": "korean" | "english" | "english_underlined" | "none"
+}
+
+Question text (first 1200 chars):
+"""
+${text.substring(0, 1200)}
+"""`
+        );
+
+        if (!result?.format || !result?.question_type_ko) return null;
+
+        return {
+            meta: {
+                problem_id: `learned-${Date.now()}-${idx}`,
+                problem_type: result.format,
+                skill: result.cognitive_skill || 'comprehension',
+                sub_skill: result.target_element || '',
+                difficulty: 'auto-learned',
+                source: 'image-learned',
+                question_type_ko: result.question_type_ko
+            },
+            pattern: {
+                format: result.format,
+                choice_count: result.choice_count || 0,
+                instruction: result.instruction_text || '다음 글을 읽고 물음에 답하시오.',
+                target: result.target_element || 'main_idea',
+                cognitive_skill: result.cognitive_skill || 'comprehension',
+                choice_language: result.choice_language || 'korean',
+                question_type_ko: result.question_type_ko
+            }
+        };
+    }
+
+    function renderLearnedDNAs(dnas) {
+        if (!learnedList) return;
+        learnedList.innerHTML = '';
+        if (dnas.length === 0) {
+            learnedList.innerHTML = '<p class="muted">학습된 유형 없음</p>';
             return;
         }
-        problemDNADatabase.forEach((dna, index) => {
+        dnas.forEach((dna, i) => {
             const div = document.createElement('div');
-            const checkboxId = `dna-${dna.meta.problem_id || index}`;
-            const title = dna.pedagogy.learning_objective || '(No learning objective)';
-            const label = `${dna.meta.problem_type} (${dna.meta.sub_skill || 'N/A'})`;
-            
+            div.className = 'learned-tag';
             div.innerHTML = `
-                <label for="${checkboxId}" title="${title}" style="display: block; margin-bottom: 5px; background: #f7f7f7; padding: 5px; border-radius: 3px;">
-                    <input type="checkbox" id="${checkboxId}" value="${index}" checked>
-                    <strong>${label}</strong>
-                    <small style="display:block; color: #777;">${dna.pedagogy.test_intent || ''}</small>
-                </label>`;
-            dnaSelectionContainer.appendChild(div);
+                <span class="tag-num">${i + 1}</span>
+                <div class="tag-info">
+                    <strong>${dna.meta.question_type_ko}</strong>
+                    <small>${dna.pattern.format} · ${dna.pattern.cognitive_skill}</small>
+                </div>`;
+            learnedList.appendChild(div);
         });
     }
 
-    async function generationPipeline() {
-        log('--- GENERATOR: Pipeline Initiated ---', 'master', computeLog);
-        generateBtn.disabled = true;
-        generateBtn.innerText = 'Working...';
+    function loadLearnedDNAs() {
+        if (learnedDNAs.length === 0) {
+            log('로드할 학습 데이터가 없습니다. 먼저 시험지를 학습시켜주세요.', 'error', genLog);
+            return;
+        }
+        // Prepend learned DNAs, avoid exact duplicates by question_type_ko
+        const existing = new Set(dnaBank.map(d => d.meta.question_type_ko));
+        const toAdd = learnedDNAs.filter(d => !existing.has(d.meta.question_type_ko));
+        dnaBank.unshift(...toAdd);
+        renderDNACheckboxes();
+        log(`✓ ${toAdd.length}개 학습된 유형이 문제 생성기에 추가되었습니다.`, 'success', genLog);
+    }
+
+    // =====================================================
+    // PIPELINE B: QUESTION GENERATION  (Passage + DNA → Questions)
+    // =====================================================
+    /**
+     * Ant 1: Passage Analyzer  — understand the text  (1 call, shared)
+     * Ant 2: Question Planner  — decide what to ask   (1 call per question)
+     * Ant 3: Question Builder  — write question+answer (1 call per question)
+     * Ant 4: Auditor           — structural check      (no API call)
+     *
+     * Total API calls per question: 3 (planner + builder + shared analyzer)
+     */
+    async function runGenerationPipeline() {
+        clearLog(genLog);
         resultContainer.innerHTML = '';
+        setBtn(generateBtn, false, '🐜 생성 중...');
 
         try {
-            const passage = readingMaterial.value;
-            const selectedDNAs = Array.from(dnaSelectionContainer.querySelectorAll('input:checked')).map(cb => problemDNADatabase[cb.value]);
-            const generationCount = parseInt(predictCountInput.value, 10);
-            if (!passage || selectedDNAs.length === 0) throw new Error('Reading passage and at least one DNA type must be provided.');
+            const passage = passageArea?.value?.trim();
+            if (!passage) throw new Error('영어 지문을 입력해주세요.');
 
-            let finalProducts = [];
+            const checkedInputs = dnaContainer?.querySelectorAll('input:checked') || [];
+            const selectedDNAs = Array.from(checkedInputs).map(cb => dnaBank[parseInt(cb.value)]);
+            if (selectedDNAs.length === 0) throw new Error('문제 유형을 하나 이상 선택해주세요.');
+
+            const count = Math.min(parseInt(countInput?.value || 1, 10), 5);
+
+            log(`── 마스터 개미: 파이프라인 시작 (${selectedDNAs.length}유형 × ${count}문항) ──`, 'master', genLog);
+
+            // ── Ant 1: Analyze passage ONCE ─────────────────
+            log('[분석] 지문 분석 개미 투입...', 'ant', genLog);
+            const analysis = await passageAnalyzerAnt(passage);
+            log(`지문 분석 완료 → 주제: ${analysis.main_topic}`, 'success', genLog);
+
+            const results = [];
+
             for (const dna of selectedDNAs) {
-                for (let i = 0; i < generationCount; i++) {
-                    log(`[${i + 1}/${generationCount}] Generating from DNA: ${dna.meta.problem_type}...`, 'ant', computeLog);
-                    const finalProduct = await antArchitect(dna, passage);
-                    log('Architect Ant: Problem constructed.', 'ant', computeLog);
-                    const auditPassed = await harnessAuditor(finalProduct);
-                    if (auditPassed) finalProducts.push(finalProduct);
-                     // Apply rate limiting
-                    if ((i + 1) < generationCount || selectedDNAs.indexOf(dna) < selectedDNAs.length - 1) {
-                        log(`Pacing... waiting ${RATE_LIMIT_DELAY / 1000}s to avoid rate limits.`, 'info', computeLog);
-                        await sleep(RATE_LIMIT_DELAY);
+                for (let i = 0; i < count; i++) {
+                    const label = dna.meta.question_type_ko || dna.meta.problem_type;
+                    log(`[생성] "${label}" (${i + 1}/${count}) 생성 시작...`, 'ant', genLog);
+                    await sleep(DELAY_MS);
+
+                    try {
+                        // ── Ant 2: Plan ──────────────────────────────
+                        log('  └ 기획 개미: 출제 계획 수립 중...', 'ant', genLog);
+                        const plan = await questionPlannerAnt(dna, analysis);
+                        await sleep(DELAY_MS);
+
+                        // ── Ant 3: Build ─────────────────────────────
+                        log('  └ 제작 개미: 문제 작성 중...', 'ant', genLog);
+                        const built = await questionBuilderAnt(dna, passage, plan);
+
+                        // ── Ant 4: Audit ─────────────────────────────
+                        const assembled = assembleQuestion(dna, passage, built);
+                        if (auditAnt(assembled, genLog)) {
+                            results.push(assembled);
+                            log(`  └ ✓ 감사 통과`, 'auditor', genLog);
+                        } else {
+                            log(`  └ ✗ 감사 실패 — 구조 오류. 스킵.`, 'auditor', genLog);
+                        }
+
+                    } catch (e) {
+                        log(`  └ 오류: ${e.message}`, 'error', genLog);
                     }
                 }
             }
-            renderResults(finalProducts);
-            log('--- GENERATOR: Pipeline Complete ---', 'master', computeLog);
-        } catch (error) {
-            log(`GENERATOR HALTED: ${error.message}`, 'error', computeLog);
+
+            renderResults(results);
+            log(`── 마스터 개미: 완료! ${results.length}개 문제 생성 (총 API ${totalApiCalls}회 호출) ──`, 'master', genLog);
+
+        } catch (err) {
+            log(`파이프라인 중단: ${err.message}`, 'error', genLog);
         } finally {
-            generateBtn.disabled = false;
-            generateBtn.innerText = '⚙️ 개미 군집 가동 (문제 생성)';
+            setBtn(generateBtn, true, '⚙️ 문제 생성');
         }
     }
 
-    async function antArchitect(dna, passage) {
-        let prompt = dna.generation_dna.regeneration_prompt.replace("(The user will provide this)", `\"\"\"\n${passage}\n\"\"\"`);
-        prompt += "\n\nYour final output must be a single, valid JSON object, and nothing else.";
-        
-        const response = await callGroq(prompt, true);
-        let generated = JSON.parse(response);
+    // Ant 1: Analyze passage — shared across all questions
+    async function passageAnalyzerAnt(passage) {
+        return await callGroqJson(
+            'You are a concise English text analyst. Return only valid JSON, no extra text.',
+            `Analyze this English passage briefly.
+Return JSON:
+{
+  "main_topic": "<topic in Korean, max 8 words>",
+  "main_idea_ko": "<one-sentence Korean summary>",
+  "tone": "formal" | "informal" | "descriptive" | "narrative" | "argumentative",
+  "key_phrases": ["<notable English phrase 1>", "<phrase 2>", "<phrase 3>"],
+  "key_vocab": [{"word": "...", "meaning_ko": "..."}, ...]
+}
 
-        // **CRITICAL FIX**: Standardize the AI's output.
-        // If the AI returns the content directly, wrap it in the expected 'content' object.
-        if (!generated.content) {
-            log('Architect Ant: AI output is non-standard. Performing emergency standardization.', 'ant', computeLog);
-            const standardized = {
-                "meta": dna.meta, // Carry over the original metadata
-                "pedagogy": dna.pedagogy, // Carry over the original pedagogy
-                "content": generated, // Wrap the direct output
-                "generation_dna": dna.generation_dna // Carry over generation info
-            };
-            // Ensure the standardized content has the passage text.
-            if (standardized.content) {
-                 standardized.content.passage_text = passage;
+Passage:
+"""
+${passage.substring(0, 2000)}
+"""`
+        );
+    }
+
+    // Ant 2: Plan what to ask — small, focused call
+    async function questionPlannerAnt(dna, analysis) {
+        const p = dna.pattern;
+        return await callGroqJson(
+            'You are an exam question planner. Be specific and concise. Return valid JSON only.',
+            `Plan ONE "${p.question_type_ko}" question.
+
+Pattern info:
+- format: ${p.format}
+- what to test: ${p.target}
+- cognitive skill: ${p.cognitive_skill}
+- instruction: "${p.instruction}"
+
+Passage analysis:
+- topic: ${analysis.main_topic}
+- key phrases: ${JSON.stringify(analysis.key_phrases?.slice(0, 3))}
+- key vocab: ${JSON.stringify(analysis.key_vocab?.slice(0, 4))}
+
+Return JSON:
+{
+  "target_phrase": "<specific phrase or word FROM the passage to focus on, or null>",
+  "question_focus": "<one sentence: exactly what this question will test>",
+  "hint_for_builder": "<one sentence: how to best construct this question>"
+}`
+        );
+    }
+
+    // Ant 3: Build the question — the main creative call
+    async function questionBuilderAnt(dna, passage, plan) {
+        const p = dna.pattern;
+        const isMultiChoice = p.format === 'multiple_choice';
+        const choiceCount = p.choice_count || (isMultiChoice ? 5 : 0);
+        const choiceLang = p.choice_language === 'korean' ? 'Korean' : 'English';
+
+        const choiceInstruction = isMultiChoice
+            ? `"choices": [<${choiceCount} options in ${choiceLang}: 1 correct + ${choiceCount - 1} plausible distractors>],
+  "correct_answer_index": <0-based index of the correct choice>,`
+            : `"answer": "<the correct answer text>",`;
+
+        return await callGroqJson(
+            'You are an English exam question writer for Korean middle school students. Write clear, accurate questions. Return valid JSON only.',
+            `Create a "${p.question_type_ko}" question using the passage below.
+
+Question plan:
+- Focus: ${plan.question_focus}
+- Target phrase: ${plan.target_phrase ? `"${plan.target_phrase}"` : 'none'}
+- Builder hint: ${plan.hint_for_builder}
+- Instruction line: "${p.instruction}"
+${p.trap_concept ? `- Trap concept to apply: ${p.trap_concept}` : ''}
+
+Passage:
+"""
+${passage.substring(0, 2000)}
+"""
+
+Return JSON:
+{
+  "instruction_text": "${p.instruction}",
+  "question_text": "<question in Korean>",
+  ${choiceInstruction}
+  "explanation_ko": "<2-3 sentence Korean explanation of the correct answer>"
+}`
+        );
+    }
+
+    // Pure assembly — no API call
+    function assembleQuestion(dna, passage, built) {
+        let answer = built.answer || '';
+        let choices = null;
+
+        if (dna.pattern.format === 'multiple_choice' && Array.isArray(built.choices)) {
+            choices = built.choices;
+            const idx = typeof built.correct_answer_index === 'number' ? built.correct_answer_index : 0;
+            answer = choices[idx] || choices[0] || '';
+        }
+
+        return {
+            meta: { ...dna.meta },
+            pattern: { ...dna.pattern },
+            content: {
+                instruction_text: built.instruction_text || dna.pattern.instruction,
+                question_text:    built.question_text   || '',
+                passage_text:     passage,
+                choices,
+                answer,
+                explanation:      built.explanation_ko  || ''
             }
-            return standardized;
-        }
-
-        // If the output was standard, just ensure passage text is correct.
-        if (generated.content) {
-            generated.content.passage_text = passage;
-        }
-        return generated;
+        };
     }
 
-    async function harnessAuditor(finalProduct) {
-        // **ENHANCED AUDIT**: Basic structural check.
-        if (!finalProduct || !finalProduct.content || !finalProduct.content.question_text || !finalProduct.content.answer) {
-             log('Auditor Ant: Review FAILED. Product has critical structural flaws.', 'auditor', computeLog);
+    // Structural audit — no API call (saves quota)
+    function auditAnt(question, logTarget) {
+        const c = question?.content;
+        if (!c?.question_text || c.question_text.length < 5) {
+            log('  └ [감사] 질문 텍스트 없음', 'auditor', logTarget);
             return false;
         }
-        log('Auditor Ant: Review PASSED. (Basic structure appears valid).', 'auditor', computeLog);
+        if (!c.answer || String(c.answer).length < 1) {
+            log('  └ [감사] 답안 없음', 'auditor', logTarget);
+            return false;
+        }
+        if (question.pattern?.format === 'multiple_choice') {
+            if (!Array.isArray(c.choices) || c.choices.length < 2) {
+                log('  └ [감사] 선택지 부족', 'auditor', logTarget);
+                return false;
+            }
+        }
         return true;
     }
 
-    function renderResults(questions) {
-        if (questions.length === 0) {
-            resultContainer.innerHTML = `<div class="question-card" style="border-left-color: var(--warning-color);"><p>No questions were generated successfully. The colony failed to produce valid results. Check logs for errors.</p></div>`;
+    // =====================================================
+    // RENDER
+    // =====================================================
+    function renderDNACheckboxes() {
+        if (!dnaContainer) return;
+        dnaContainer.innerHTML = '';
+
+        if (dnaBank.length === 0) {
+            dnaContainer.innerHTML = '<p class="muted">유형 없음</p>';
             return;
         }
-        resultContainer.innerHTML = questions.map((q_obj, i) => {
-            // **DEFENSIVE RENDERING**: Ensure q_obj and its properties exist before trying to render.
-            if (!q_obj || !q_obj.content || !q_obj.meta) {
-                return `<div class="question-card" style="border-left-color: var(--error-color);"><p><strong>[Render Error]</strong> Problem ${i+1} has a corrupted data structure.</p></div>`;
-            }
-            const q = q_obj.content;
-            const meta = q_obj.meta;
-            const optionsHtml = q.choices && Array.isArray(q.choices) 
-                ? `<ol type="1" style="padding-left: 20px;">${q.choices.map(opt => `<li>${opt}</li>`).join('')}</ol>` 
+
+        dnaBank.forEach((dna, idx) => {
+            const id = `dna-${dna.meta.problem_id || idx}`;
+            const label = dna.meta.question_type_ko || dna.meta.problem_type;
+            const badge = dna.meta.source === 'image-learned' ? '🎓' : '📚';
+            const skill = dna.meta.skill || '';
+
+            const item = document.createElement('label');
+            item.className = 'dna-checkbox-item';
+            item.innerHTML = `
+                <input type="checkbox" id="${id}" value="${idx}" checked>
+                <span class="dna-label-text">
+                    <span class="dna-source-badge">${badge}</span>
+                    <strong>${label}</strong>
+                    <small>${skill}</small>
+                </span>`;
+            dnaContainer.appendChild(item);
+        });
+    }
+
+    function renderResults(questions) {
+        if (!resultContainer) return;
+        resultContainer.innerHTML = '';
+
+        if (questions.length === 0) {
+            resultContainer.innerHTML = '<div class="question-card warning-card">생성된 문제가 없습니다. 로그를 확인해주세요.</div>';
+            return;
+        }
+
+        questions.forEach((qObj, i) => {
+            if (!qObj?.content || !qObj?.meta) return;
+            const q    = qObj.content;
+            const meta = qObj.meta;
+            const typeLabel = meta.question_type_ko || meta.problem_type;
+
+            const choicesHtml = q.choices && Array.isArray(q.choices)
+                ? `<ol class="choices-list">${q.choices.map(opt => `<li>${opt}</li>`).join('')}</ol>`
                 : '';
 
-            return `
-                <div class="question-card">
-                    <h4>[문제 ${i + 1}] (${meta.problem_type || 'N/A'})</h4>
-                    ${q.instruction_text ? `<p><strong>지시문:</strong> ${q.instruction_text}</p>`: ''}
-                    ${q.passage_text && q.passage_text.length > 10 ? `<div style="border: 1px solid #eee; padding: 10px; margin: 10px 0; border-radius: 5px; background: #fafafa;">${q.passage_text.replace(/\n/g, '<br>')}</div>` : ''}
-                    <p>${q.question_text || '(Missing Question Text)'}</p>
-                    ${optionsHtml}
-                    <details style="margin-top: 10px;">
-                        <summary style="cursor: pointer; font-weight: 600;">정답 및 해설 보기</summary>
-                        <div style="padding: 10px; border: 1px solid #eee; margin-top: 5px; border-radius: 5px;">
-                            <p><strong>정답:</strong> ${q.answer || '(No Answer Provided)'}</p>
-                            <p><strong>해설:</strong> ${q.explanation || '(No Explanation Provided)'}</p>
-                        </div>
-                    </details>
+            const card = document.createElement('div');
+            card.className = 'question-card';
+            card.innerHTML = `
+                <div class="question-header">
+                    <span class="q-num">문제 ${i + 1}</span>
+                    <span class="q-type-badge">${typeLabel}</span>
+                    <button class="copy-btn" title="클립보드에 복사">복사</button>
                 </div>
-            `;
-        }).join('');
-    }
-    
-    // --- Dynamic UI Injection ---
-    const problemGeneratorSection = document.getElementById('problem-generator');
-    if (problemGeneratorSection && !document.getElementById('api-key-input')) {
-        const apiKeySection = document.createElement('div');
-        apiKeySection.className = 'form-group';
-        apiKeySection.innerHTML = `
-            <label for="api-key-input" style="display:flex; align-items:center; gap: 5px;">
-                Groq API Key 🔑
-                <small>(Required for all AI functions)</small>
-            </label>
-            <div style="display: flex; gap: 10px;">
-                <input type="password" id="api-key-input" placeholder="gsk_..." style="flex-grow: 1;">
-                <button id="save-key-btn" class="btn btn-secondary" style="background-color: #6c757d; padding: 0.5rem 1rem;">Save</button>
-            </div>
-        `;
-        problemGeneratorSection.prepend(apiKeySection);
+                ${q.instruction_text ? `<p class="q-instruction">${q.instruction_text}</p>` : ''}
+                <div class="passage-box">${(q.passage_text || '').replace(/\n/g, '<br>')}</div>
+                <p class="q-text">${q.question_text}</p>
+                ${choicesHtml}
+                <details class="answer-wrap">
+                    <summary>정답 및 해설 보기</summary>
+                    <div class="answer-body">
+                        <p><strong>정답:</strong> ${q.answer}</p>
+                        <p><strong>해설:</strong> ${q.explanation}</p>
+                    </div>
+                </details>`;
+
+            // Copy button
+            card.querySelector('.copy-btn').onclick = () => {
+                const text = buildPlainText(qObj, i + 1);
+                navigator.clipboard.writeText(text).then(() => {
+                    const btn = card.querySelector('.copy-btn');
+                    btn.textContent = '✓ 복사됨';
+                    setTimeout(() => { btn.textContent = '복사'; }, 2000);
+                });
+            };
+
+            resultContainer.appendChild(card);
+        });
     }
 
-    init(); // Start the application
+    function buildPlainText(qObj, num) {
+        const q = qObj.content;
+        const typeLabel = qObj.meta.question_type_ko || qObj.meta.problem_type;
+        let out = `[문제 ${num}] ${typeLabel}\n`;
+        if (q.instruction_text) out += `${q.instruction_text}\n\n`;
+        if (q.passage_text)     out += `${q.passage_text}\n\n`;
+        out += `${q.question_text}\n`;
+        if (q.choices) q.choices.forEach((c, i) => { out += `${i + 1}. ${c}\n`; });
+        out += `\n정답: ${q.answer}\n해설: ${q.explanation}\n`;
+        return out;
+    }
+
+    // =====================================================
+    // UTIL
+    // =====================================================
+    function setBtn(btn, enabled, text) {
+        if (!btn) return;
+        btn.disabled = !enabled;
+        btn.textContent = text;
+    }
+
+    // ── Start ──
+    init();
 });
