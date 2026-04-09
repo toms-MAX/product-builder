@@ -627,10 +627,37 @@ ${passage.substring(0, 1400)}
                             : p.choice_language === 'english_underlined' ? 'English'
                             : 'Korean';
 
-        const choiceSpec = isMultiChoice
-            ? `"choices": array of exactly ${choiceCount} strings in ${choiceLang} — 1 correct answer, ${choiceCount - 1} wrong but plausible distractors
-"correct_answer_index": 0-based index (number) of the correct item in choices`
-            : `"answer": the correct answer string in Korean`;
+        // Format-specific markup instructions and output fields
+        const isGrammar     = p.target === 'grammar_error';
+        const isUnderlined  = p.target === 'underlined_phrase';
+        const isBlank       = p.target === 'blank_in_passage';
+
+        let choiceSpec;
+        let markingSpec;
+
+        if (isGrammar) {
+            // Grammar error: ①~⑤ embedded in passage
+            choiceSpec  = `"correct_answer_index": 0-based index (0~4) of the phrase that contains the grammar error`;
+            markingSpec = `MARKING (grammar error type):
+  Select 5 short phrases from the passage to underline (labeled ①②③④⑤).
+  Introduce ONE deliberate grammar error into exactly one of them.
+  Return "underlined_parts": array of exactly 5 English phrases (copy from passage, with the error introduced in the wrong one)`;
+        } else if (isMultiChoice) {
+            choiceSpec  = `"choices": array of exactly ${choiceCount} strings in ${choiceLang} — 1 correct, ${choiceCount - 1} wrong but plausible distractors
+"correct_answer_index": 0-based index (number) of the correct item`;
+            markingSpec = isUnderlined
+                ? `MARKING (underlined phrase type):
+  Choose one specific phrase from the passage to underline as (A).
+  Return "target_phrase_exact": copy that phrase EXACTLY as it appears in the passage (must be a real substring)`
+                : isBlank
+                ? `MARKING (blank type):
+  Choose one word or short phrase from the passage to replace with a blank (A).
+  Return "target_phrase_exact": copy that word/phrase EXACTLY as it appears in the passage (must be a real substring)`
+                : '';
+        } else {
+            choiceSpec  = `"answer": the correct answer string in Korean`;
+            markingSpec = '';
+        }
 
         return await callGroqJson(
             'You are a Korean middle school English exam question writer. Follow the template exactly. Return only a JSON object.',
@@ -642,6 +669,7 @@ QUESTION TYPE TEMPLATE:
   What to test: ${p.target}
   Cognitive skill: ${p.cognitive_skill}
 ${p.trap_concept ? '  Distractor rule: ' + p.trap_concept : ''}
+${markingSpec ? '\n' + markingSpec : ''}
 ${userOrder ? `\nSPECIAL INSTRUCTIONS FROM USER (follow strictly):\n  ${userOrder}` : ''}
 
 PASSAGE CONTEXT:
@@ -651,29 +679,77 @@ PASSAGE CONTEXT:
 
 FULL PASSAGE:
 """
-${passage.substring(0, 1300)}
+${passage.substring(0, 1200)}
 """
 
 OUTPUT — return a JSON object with exactly these keys:
 "instruction_text": instruction line in Korean
 "question_text": the question in Korean (follow the question format template above)
 ${choiceSpec}
+${(isUnderlined || isBlank) ? '"target_phrase_exact": the exact phrase from the passage to mark (must exist verbatim in the passage)' : ''}
+${isGrammar ? '"underlined_parts": array of exactly 5 English phrases from the passage' : ''}
 "explanation_ko": 2-3 Korean sentences explaining why the answer is correct`
         );
     }
 
+    // Apply visual markup to the passage based on question type
+    function markPassage(passage, built, target) {
+        const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        if (target === 'underlined_phrase' && built.target_phrase_exact) {
+            const phrase = built.target_phrase_exact.trim();
+            return passage.replace(
+                new RegExp(escapeRe(phrase)),
+                `<span class="mark-underline"><span class="mark-label">(A)</span>${phrase}</span>`
+            );
+        }
+
+        if (target === 'blank_in_passage' && built.target_phrase_exact) {
+            const phrase = built.target_phrase_exact.trim();
+            return passage.replace(
+                new RegExp(escapeRe(phrase)),
+                `<span class="mark-blank">&nbsp;&nbsp;(A)&nbsp;&nbsp;</span>`
+            );
+        }
+
+        if (target === 'grammar_error' && Array.isArray(built.underlined_parts)) {
+            const nums = ['①', '②', '③', '④', '⑤'];
+            let marked = passage;
+            built.underlined_parts.forEach((part, i) => {
+                if (!part) return;
+                marked = marked.replace(
+                    new RegExp(escapeRe(part.trim())),
+                    `<span class="mark-numbered"><span class="mark-num">${nums[i]}</span>${part.trim()}</span>`
+                );
+            });
+            return marked;
+        }
+
+        return passage; // no markup needed for topic/summary types
+    }
+
     // Assemble final question object from ant output — no API call
     function assembleQuestion(dna, passage, built) {
-        let answer  = built.answer || '';
-        let choices = null;
+        const target = dna.pattern.target || '';
+        let answer   = built.answer || '';
+        let choices  = null;
 
-        if (dna.pattern.format === 'multiple_choice' && Array.isArray(built.choices)) {
+        if (dna.pattern.target === 'grammar_error' && Array.isArray(built.underlined_parts)) {
+            // Grammar error: choices are ①~⑤, answer is the number at correct_answer_index
+            const nums = ['①', '②', '③', '④', '⑤'];
+            choices = nums.slice(0, built.underlined_parts.length);
+            const idx = typeof built.correct_answer_index === 'number'
+                ? Math.max(0, Math.min(built.correct_answer_index, choices.length - 1)) : 0;
+            answer = choices[idx];
+        } else if (dna.pattern.format === 'multiple_choice' && Array.isArray(built.choices)) {
             choices = built.choices;
             const idx = typeof built.correct_answer_index === 'number'
-                ? Math.max(0, Math.min(built.correct_answer_index, choices.length - 1))
-                : 0;
+                ? Math.max(0, Math.min(built.correct_answer_index, choices.length - 1)) : 0;
             answer = choices[idx] || choices[0] || '';
         }
+
+        // Build passage_display: raw passage + visual markup applied
+        const passageDisplay = markPassage(passage, built, target);
 
         return {
             meta:    { ...dna.meta },
@@ -681,7 +757,8 @@ ${choiceSpec}
             content: {
                 instruction_text: built.instruction_text || dna.pattern.instruction,
                 question_text:    built.question_text    || '',
-                passage_text:     passage,
+                passage_text:     passage,      // plain text (for copy)
+                passage_display:  passageDisplay, // HTML with markup (for render)
                 choices,
                 answer,
                 explanation:      built.explanation_ko   || ''
@@ -768,7 +845,7 @@ ${choiceSpec}
                     <button class="copy-btn" title="클립보드에 복사">복사</button>
                 </div>
                 ${q.instruction_text ? `<p class="q-instruction">${q.instruction_text}</p>` : ''}
-                <div class="passage-box">${(q.passage_text || '').replace(/\n/g, '<br>')}</div>
+                <div class="passage-box">${(q.passage_display || q.passage_text || '').replace(/\n/g, '<br>')}</div>
                 <p class="q-text">${q.question_text}</p>
                 ${choicesHtml}
                 <details class="answer-wrap">

@@ -456,6 +456,45 @@
             gap: 0.4rem;
         }
 
+        /* ── Passage Markup Styles ───────────────────── */
+        /* (A) underlined phrase */
+        .mark-underline {
+            text-decoration: underline;
+            text-underline-offset: 3px;
+            font-weight: 600;
+        }
+        .mark-label {
+            font-size: 0.75rem;
+            font-weight: 800;
+            color: var(--blue);
+            vertical-align: super;
+            margin-right: 1px;
+        }
+        /* Blank (A) */
+        .mark-blank {
+            display: inline-block;
+            min-width: 80px;
+            border-bottom: 2px solid var(--blue);
+            color: var(--blue);
+            font-weight: 700;
+            text-align: center;
+            letter-spacing: 2px;
+            margin: 0 2px;
+        }
+        /* ①②③④⑤ numbered underlines for grammar error type */
+        .mark-numbered {
+            text-decoration: underline;
+            text-underline-offset: 3px;
+            font-weight: 600;
+        }
+        .mark-num {
+            font-size: 0.78rem;
+            font-weight: 800;
+            color: var(--blue);
+            vertical-align: super;
+            margin-right: 1px;
+        }
+
         /* ── Misc ────────────────────────────────────── */
         .muted { color: var(--muted); font-size: 0.85rem; }
 
