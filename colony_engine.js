@@ -402,22 +402,41 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (segments.length === 0) throw new Error('문제 블록을 찾지 못했습니다. OCR 결과를 확인해주세요.');
 
             // ── Ant 3: Pattern Analysis per segment ──────────
-            log('[3/3] 유형 분석 개미 투입 중...', 'ant', ocrLog);
+            log(`[3/3] 유형 분석 개미 투입 중... (${segments.length}개 블록)`, 'ant', ocrLog);
             const seen = new Set(); // deduplicate by question_type_ko
+            let consecutiveDups = 0;
+            const MAX_CONSECUTIVE_DUPS = 4; // stop early if we keep seeing known types
+            const MAX_ANALYSIS_CALLS   = 15; // API call budget for analysis phase
+            let callsMade = 0;
 
             for (let i = 0; i < segments.length; i++) {
+                if (callsMade >= MAX_ANALYSIS_CALLS) {
+                    log(`  API 호출 한도(${MAX_ANALYSIS_CALLS}회) 도달 — 분석 종료.`, 'warn', ocrLog);
+                    break;
+                }
+                if (consecutiveDups >= MAX_CONSECUTIVE_DUPS && learnedDNAs.length >= 3) {
+                    log(`  연속 ${MAX_CONSECUTIVE_DUPS}회 중복 → 나머지 ${segments.length - i}개 블록 스킵.`, 'info', ocrLog);
+                    break;
+                }
+
                 log(`  유형 분석 ${i + 1}/${segments.length}...`, 'ant', ocrLog);
                 try {
                     const dna = await patternAnalysisAnt(segments[i], i);
+                    callsMade++;
                     if (dna) {
                         const key = dna.meta.question_type_ko;
                         if (!seen.has(key)) {
                             seen.add(key);
                             learnedDNAs.push(dna);
-                            log(`  ✓ 새 유형 발견: "${key}"`, 'success', ocrLog);
+                            consecutiveDups = 0;
+                            const tmpl = dna.pattern.question_template ? ` | 형식: "${dna.pattern.question_template.substring(0, 40)}"` : '';
+                            log(`  ✓ 새 유형 발견: "${key}"${tmpl}`, 'success', ocrLog);
                         } else {
-                            log(`  중복 유형 스킵: "${key}"`, 'info', ocrLog);
+                            consecutiveDups++;
+                            log(`  중복 유형 스킵: "${key}" (연속 ${consecutiveDups}회)`, 'info', ocrLog);
                         }
+                    } else {
+                        log(`  블록 ${i + 1}: 유형 추출 실패 (스킵)`, 'warn', ocrLog);
                     }
                 } catch (e) {
                     log(`  분석 실패 (블록 ${i + 1}): ${e.message}`, 'warn', ocrLog);
@@ -426,7 +445,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             renderLearnedDNAs(learnedDNAs);
-            log(`── 학습 완료! ${learnedDNAs.length}개 신규 유형 발견 ──`, 'master', ocrLog);
+
+            if (learnedDNAs.length > 0) {
+                loadLearnedDNAs(); // ── auto-apply to generator ──
+                log(`── 학습 완료! ${learnedDNAs.length}개 유형 발견 → 문제 생성기에 자동 적용됨 ──`, 'master', ocrLog);
+            } else {
+                log(`── 학습 완료. 유형 패턴을 찾지 못했습니다. OCR 결과를 확인해주세요. ──`, 'warn', ocrLog);
+            }
 
         } catch (err) {
             log(`파이프라인 중단: ${err.message}`, 'error', ocrLog);
@@ -457,29 +482,52 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const ab  = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
-        const maxPages = Math.min(pdf.numPages, 5);
-        log(`PDF ${pdf.numPages}페이지 감지 (최대 ${maxPages}페이지 처리).`, 'info', ocrLog);
+        const totalPages = pdf.numPages;
+        log(`PDF ${totalPages}페이지 감지 — 전체 페이지 처리.`, 'info', ocrLog);
 
         // ── 1st attempt: direct text extraction (digital PDF) ──
+        // PDF.js extracts items with x,y positions — sort by y then x for proper reading order
         let fullText = '';
-        for (let p = 1; p <= maxPages; p++) {
+        for (let p = 1; p <= totalPages; p++) {
+            log(`  텍스트 추출: ${p}/${totalPages}페이지...`, 'ant', ocrLog);
             const page    = await pdf.getPage(p);
             const content = await page.getTextContent();
-            const pageText = content.items.map(i => i.str).join(' ');
-            fullText += pageText + '\n';
+
+            // Sort items by vertical position (top→bottom), then horizontal (left→right)
+            const sorted = content.items.slice().sort((a, b) => {
+                const dy = Math.round(b.transform[5] - a.transform[5]);
+                return dy !== 0 ? dy : a.transform[4] - b.transform[4];
+            });
+
+            // Group into lines by y-position proximity, then join
+            let lineY = null;
+            let lineTokens = [];
+            let pageLines = [];
+            for (const item of sorted) {
+                const y = Math.round(item.transform[5]);
+                if (lineY === null || Math.abs(y - lineY) > 3) {
+                    if (lineTokens.length) pageLines.push(lineTokens.join(' '));
+                    lineTokens = [item.str];
+                    lineY = y;
+                } else {
+                    lineTokens.push(item.str);
+                }
+            }
+            if (lineTokens.length) pageLines.push(lineTokens.join(' '));
+            fullText += pageLines.join('\n') + '\n\n';
         }
 
         // If meaningful text found, return it
-        if (fullText.replace(/\s/g, '').length > 100) {
-            log('디지털 PDF 텍스트 직접 추출 성공.', 'success', ocrLog);
+        if (fullText.replace(/\s/g, '').length > 200) {
+            log(`디지털 PDF 직접 추출 성공 (${fullText.length}자).`, 'success', ocrLog);
             return fullText;
         }
 
         // ── 2nd attempt: OCR each page (scanned PDF) ──────────
         log('텍스트 없는 스캔 PDF 감지 → OCR 모드로 전환...', 'warn', ocrLog);
         let ocrText = '';
-        for (let p = 1; p <= maxPages; p++) {
-            log(`  OCR 처리 중: ${p}/${maxPages}페이지...`, 'ant', ocrLog);
+        for (let p = 1; p <= totalPages; p++) {
+            log(`  OCR 처리 중: ${p}/${totalPages}페이지...`, 'ant', ocrLog);
             const page     = await pdf.getPage(p);
             const viewport = page.getViewport({ scale: 2.0 });
             const canvas   = document.createElement('canvas');
@@ -501,17 +549,52 @@ document.addEventListener('DOMContentLoaded', async () => {
         return ocrText;
     }
 
-    // Ant 2: Rule-based segmentation (no API call needed)
+    // Ant 2: Rule-based segmentation — handles Korean exam PDF layouts
     function segmentText(raw) {
-        // Match lines starting with a number followed by . or ) or 、
-        const parts = raw.split(/(?=\n\s*\d+\s*[.)\、]\s)/).map(s => s.trim()).filter(s => s.length > 30);
-        if (parts.length >= 2) return parts.map((text, i) => ({ number: i + 1, text }));
+        // Normalize line endings
+        const text = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-        // Fallback: split by double newline and pick chunks that look like questions
-        return raw.split(/\n{2,}/)
+        // ── Strategy 1: newline-prefixed question numbers ────────────────
+        // Matches: \n19. / \n 19. / \n[19~20] / \n19) etc.
+        let parts = text
+            .split(/\n(?=\s*\[?\d{1,2}(?:~\d{1,2})?\]?\s*[.)]\s*)/)
             .map(s => s.trim())
-            .filter(s => s.length > 40 && /[?？①②③④⑤]/.test(s))
-            .map((text, i) => ({ number: i + 1, text }));
+            .filter(s => s.length > 30 && /\d/.test(s));
+        if (parts.length >= 3) {
+            return parts.map((t, i) => ({ number: i + 1, text: t }));
+        }
+
+        // ── Strategy 2: inline numbers (PDF.js merges lines) ────────────
+        // Split on pattern like "  19. " or " 20. " appearing mid-string
+        parts = text
+            .split(/(?<=\S)\s{1,4}(?=\d{1,2}\s*\.\s+[가-힣A-Za-z①-⑩])/)
+            .map(s => s.trim())
+            .filter(s => s.length > 30);
+        if (parts.length >= 3) {
+            return parts.map((t, i) => ({ number: i + 1, text: t }));
+        }
+
+        // ── Strategy 3: paragraph split → keep question-like chunks ─────
+        parts = text
+            .split(/\n{2,}/)
+            .map(s => s.trim())
+            .filter(s => s.length > 40 && /[?？①②③④⑤]|다음\s*글/.test(s));
+        if (parts.length >= 2) {
+            return parts.map((t, i) => ({ number: i + 1, text: t }));
+        }
+
+        // ── Strategy 4: fixed-size chunking as last resort ───────────────
+        // Break into ~900-char chunks at nearest newline boundary
+        const chunks = [];
+        let remaining = text.trim();
+        while (remaining.length > 100) {
+            const end = Math.min(900, remaining.length);
+            const cut = remaining.lastIndexOf('\n', end);
+            const splitAt = cut > 200 ? cut : end;
+            chunks.push({ number: chunks.length + 1, text: remaining.slice(0, splitAt).trim() });
+            remaining = remaining.slice(splitAt).trim();
+        }
+        return chunks;
     }
 
     // Ant 3: Analyze ONE question block → DNA template (1 API call)
@@ -519,21 +602,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         const text = typeof segment === 'string' ? segment : segment.text;
 
         const result = await callGroqJson(
-            'You are an exam question structure expert. Analyze only FORMAT and PATTERN, not content. Return valid JSON only.',
-            `Analyze this exam question's structural pattern.
+            'You are a Korean English exam question structure expert. Extract the EXACT format and template. Return valid JSON only.',
+            `Analyze this Korean exam question block and extract its structural pattern.
 
-Return a JSON object with these exact keys:
-- "format": one of: multiple_choice, short_answer, fill_in_blank, ordering, matching
-- "choice_count": number of answer choices (0 if not multiple choice)
-- "instruction_text": the Korean instruction line if present, otherwise null
-- "question_type_ko": Korean label for this question type, max 12 chars (example: 빈칸 추론, 주제 파악, 어법 오류)
-- "cognitive_skill": one of: inference, comprehension, grammar, vocabulary, writing
-- "target_element": what the question tests (example: underlined_phrase, blank, main_idea, grammar_error)
-- "choice_language": one of: korean, english, english_underlined, none
+Return a JSON object with EXACTLY these keys:
+"format": one of: multiple_choice, short_answer, fill_in_blank, ordering, matching
+"choice_count": integer number of answer choices (0 if not multiple_choice)
+"instruction_text": copy the exact Korean instruction line (example: "다음 글을 읽고 물음에 답하시오."), or null if not present
+"question_template": copy the exact Korean question stem (example: "윗글의 빈칸 (A), (B)에 들어갈 말로 가장 적절한 것은?"), or null
+"question_type_ko": short Korean label for this question type, max 10 chars (examples: 빈칸 추론, 주제 파악, 어법 오류, 밑줄 의미, 순서 배열, 문장 삽입, 내용 일치)
+"cognitive_skill": one of: inference, comprehension, grammar, vocabulary, writing
+"target_element": one of: underlined_phrase, blank_in_passage, main_idea, grammar_error, topic, ordering, sentence_insertion, content_match
+"choice_language": one of: korean, english, english_underlined, none
+"trap_concept": Korean phrase describing how wrong answer choices are designed (example: "지문과 관련 없는 주제를 오답으로 배치"), or null
 
-Question text:
+Question block:
 """
-${text.substring(0, 1000)}
+${text.substring(0, 1200)}
 """`
         );
 
@@ -551,12 +636,14 @@ ${text.substring(0, 1000)}
             },
             pattern: {
                 format: result.format,
-                choice_count: result.choice_count || 0,
+                choice_count: result.choice_count || (result.format === 'multiple_choice' ? 5 : 0),
                 instruction: result.instruction_text || '다음 글을 읽고 물음에 답하시오.',
+                question_template: result.question_template || '',
                 target: result.target_element || 'main_idea',
                 cognitive_skill: result.cognitive_skill || 'comprehension',
                 choice_language: result.choice_language || 'korean',
-                question_type_ko: result.question_type_ko
+                question_type_ko: result.question_type_ko,
+                trap_concept: result.trap_concept || null
             }
         };
     }
@@ -590,8 +677,9 @@ ${text.substring(0, 1000)}
         const existing = new Set(dnaBank.map(d => d.meta.question_type_ko));
         const toAdd = learnedDNAs.filter(d => !existing.has(d.meta.question_type_ko));
         dnaBank.unshift(...toAdd);
-        renderDNACheckboxes();
-        log(`✓ ${toAdd.length}개 학습된 유형이 문제 생성기에 추가되었습니다.`, 'success', genLog);
+        // Only auto-check learned types — uncheck built-ins so generator uses exam's actual pattern
+        renderDNACheckboxes('learned-only');
+        log(`✓ ${toAdd.length}개 학습된 유형 적용 완료. 기본 내장 유형은 자동 해제되었습니다.`, 'success', genLog);
     }
 
     // =====================================================
@@ -1076,7 +1164,8 @@ ${isGrammar ? '"underlined_parts": array of exactly 5 English phrases from the p
     // =====================================================
     // RENDER
     // =====================================================
-    function renderDNACheckboxes() {
+    // mode: 'all' = check everything (default), 'learned-only' = only check learned types
+    function renderDNACheckboxes(mode = 'all') {
         if (!dnaContainer) return;
         dnaContainer.innerHTML = '';
 
@@ -1088,17 +1177,23 @@ ${isGrammar ? '"underlined_parts": array of exactly 5 English phrases from the p
         dnaBank.forEach((dna, idx) => {
             const id = `dna-${dna.meta.problem_id || idx}`;
             const label = dna.meta.question_type_ko || dna.meta.problem_type;
-            const badge = dna.meta.source === 'image-learned' ? '🎓' : '📚';
+            const isLearned = dna.meta.source === 'image-learned';
+            const badge = isLearned ? '🎓' : '📚';
             const skill = dna.meta.skill || '';
+            const tmpl  = dna.pattern?.question_template ? `<span style="font-size:0.7rem; color:#888; display:block; margin-top:1px; font-style:italic;">${dna.pattern.question_template.substring(0, 50)}${dna.pattern.question_template.length > 50 ? '…' : ''}</span>` : '';
+
+            // In 'learned-only' mode: only pre-check learned types
+            const shouldCheck = mode === 'learned-only' ? isLearned : true;
 
             const item = document.createElement('label');
             item.className = 'dna-checkbox-item';
             item.innerHTML = `
-                <input type="checkbox" id="${id}" value="${idx}" checked>
+                <input type="checkbox" id="${id}" value="${idx}" ${shouldCheck ? 'checked' : ''}>
                 <span class="dna-label-text">
                     <span class="dna-source-badge">${badge}</span>
                     <strong>${label}</strong>
                     <small>${skill}</small>
+                    ${tmpl}
                 </span>`;
             dnaContainer.appendChild(item);
         });
