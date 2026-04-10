@@ -838,8 +838,17 @@ ${passage.substring(0, 1400)}
         }
 
         return await callGroqJson(
-            'You are a Korean middle school English exam question writer. Follow the template exactly. Return only a JSON object. IMPORTANT: The passage must remain in English only — never add Korean words inside the passage text. Korean is only allowed in the instruction_text and question_text fields.',
-            `Write ONE "${p.question_type_ko}" question for the passage below.
+            `You are a Korean high school 1st grade (고등학교 1학년) English exam question writer.
+TARGET LEVEL: Korean CSAT (수능) prep level — advanced vocabulary, complex sentence structures, abstract topics.
+STRICT LANGUAGE RULE: passage_text output field must contain ONLY English — absolutely NO Korean characters (한글) anywhere in the passage. Korean is allowed ONLY in instruction_text and question_text fields.
+Follow the question template exactly. Return only a valid JSON object.`,
+            `Write ONE "${p.question_type_ko}" question at HIGH SCHOOL 1ST GRADE level for the passage below.
+
+DIFFICULTY REQUIREMENTS (고등학교 1학년 수준):
+  - Use advanced English vocabulary (college-prep level)
+  - Distractors must be sophisticated and require careful reading to eliminate
+  - Question should test deep comprehension or inference, not surface-level facts
+  - Avoid simple or obvious answers
 
 QUESTION TYPE TEMPLATE:
   Instruction: ${p.instruction}
@@ -855,17 +864,17 @@ PASSAGE CONTEXT:
   Key phrase 1: ${analysis.key_phrase_1 || ''}
   Key phrase 2: ${analysis.key_phrase_2 || ''}
 
-FULL PASSAGE:
+FULL PASSAGE (English only — do NOT translate or add Korean to this):
 """
 ${passage.substring(0, 1200)}
 """
 
 OUTPUT — return a JSON object with exactly these keys:
-"instruction_text": instruction line in Korean
-"question_text": the question in Korean (follow the question format template above)
+"instruction_text": instruction line in Korean (예: 다음 글을 읽고 물음에 답하시오.)
+"question_text": the question stem in Korean (follow the question_template above exactly)
 ${choiceSpec}
-${(isUnderlined || isBlank) ? '"target_phrase_exact": the exact phrase from the passage to mark (must exist verbatim in the passage)' : ''}
-${isGrammar ? '"underlined_parts": array of exactly 5 English phrases from the passage' : ''}
+${(isUnderlined || isBlank) ? '"target_phrase_exact": the exact English phrase from the passage to mark (must exist verbatim in the passage — English only)' : ''}
+${isGrammar ? '"underlined_parts": array of exactly 5 English phrases copied verbatim from the passage' : ''}
 "explanation_ko": 2-3 Korean sentences explaining why the answer is correct`
         );
     }
