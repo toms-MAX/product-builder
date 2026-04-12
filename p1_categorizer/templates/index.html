@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ExamSwipe — 문제 분류기</title>
+<style>
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --card: #21253a;
+  --border: #2e3350;
+  --blue: #4f7cff;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #f59e0b;
+  --text: #e8eaf6;
+  --muted: #6b7280;
+  --radius: 20px;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  z-index: 10;
+}
+.logo { font-size: 1.1rem; font-weight: 800; color: var(--blue); letter-spacing: -.02em; }
+.logo span { color: var(--text); }
+.progress-wrap { flex: 1; max-width: 300px; margin: 0 24px; }
+.progress-label { font-size: .75rem; color: var(--muted); margin-bottom: 5px; text-align: center; }
+.progress-bar-bg { height: 6px; background: var(--border); border-radius: 99px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: var(--blue); border-radius: 99px; transition: width .4s ease; }
+.header-actions { display: flex; gap: 10px; }
+
+/* ── Buttons ── */
+.btn {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s, transform .1s;
+}
+.btn:hover { opacity: .85; }
+.btn:active { transform: scale(.97); }
+.btn-ghost { background: transparent; border: 1.5px solid var(--border); color: var(--muted); }
+.btn-ghost:hover { border-color: var(--blue); color: var(--blue); opacity: 1; }
+.btn-blue  { background: var(--blue); color: #fff; }
+.btn-green { background: var(--green); color: #fff; }
+
+/* ── Upload Screen ── */
+#screen-upload {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.upload-box {
+  width: 100%;
+  max-width: 520px;
+  border: 2.5px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 56px 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.upload-box:hover { border-color: var(--blue); background: rgba(79,124,255,.05); }
+.upload-box .icon { font-size: 3rem; margin-bottom: 16px; }
+.upload-box h2 { font-size: 1.2rem; margin-bottom: 8px; }
+.upload-box p { color: var(--muted); font-size: .9rem; }
+#file-input { display: none; }
+#upload-file-name { margin-top: 14px; font-size: .85rem; color: var(--blue); min-height: 1.2em; }
+#upload-status { margin-top: 10px; font-size: .85rem; color: var(--muted); min-height: 1.2em; }
+#upload-start-btn { margin-top: 20px; width: 100%; padding: 14px; font-size: 1rem; }
+
+/* ── Swipe Screen ── */
+#screen-swipe {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  gap: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Card Stack ── */
+.card-stack {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
+  height: 420px;
+  flex-shrink: 0;
+}
+
+/* 배경 카드 (미리 보기) */
+.card-bg {
+  position: absolute;
+  inset: 0;
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  transform: scale(.95) translateY(8px);
+  opacity: .5;
+  z-index: 0;
+}
+.card-bg2 {
+  transform: scale(.90) translateY(16px);
+  opacity: .25;
+}
+
+/* 메인 카드 */
+.swipe-card {
+  position: absolute;
+  inset: 0;
+  background: var(--card);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  cursor: grab;
+  transition: box-shadow .2s;
+  user-select: none;
+  will-change: transform;
+}
+.swipe-card:active { cursor: grabbing; }
+.swipe-card.animate-left  { animation: flyLeft  .4s ease forwards; }
+.swipe-card.animate-right { animation: flyRight .4s ease forwards; }
+.swipe-card.animate-up    { animation: flyUp    .35s ease forwards; }
+
+@keyframes flyLeft  { to { transform: translateX(-150%) rotate(-20deg); opacity: 0; } }
+@keyframes flyRight { to { transform: translateX(150%)  rotate(20deg);  opacity: 0; } }
+@keyframes flyUp    { to { transform: translateY(-150%) scale(.8);       opacity: 0; } }
+
+/* 스와이프 힌트 오버레이 */
+.hint-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  font-weight: 900;
+  letter-spacing: .05em;
+}
+.hint-left  { background: rgba(239,68,68,.25);  color: #ef4444;  border: 3px solid #ef4444; }
+.hint-right { background: rgba(34,197,94,.25);  color: #22c55e;  border: 3px solid #22c55e; }
+
+/* 카드 이미지 영역 */
+.card-img-wrap {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #fff;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12px;
+}
+.card-img-wrap img {
+  max-width: 100%;
+  display: block;
+  pointer-events: none;
+}
+.card-num-badge {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  background: rgba(0,0,0,.6);
+  color: #fff;
+  font-size: .75rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 99px;
+  z-index: 5;
+}
+
+/* ── 태그 패널 ── */
+.tag-panel {
+  width: 100%;
+  max-width: 700px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 18px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+/* 난이도 */
+.tag-group { display: flex; align-items: center; gap: 8px; }
+.tag-group-label { font-size: .75rem; color: var(--muted); font-weight: 600; min-width: 36px; }
+
+.diff-btns { display: flex; gap: 5px; }
+.diff-btn {
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: .85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s;
+}
+.diff-btn:hover { border-color: var(--yellow); color: var(--yellow); }
+.diff-btn.on { background: var(--yellow); border-color: var(--yellow); color: #000; }
+
+/* 주제 칩 */
+.topic-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.chip {
+  padding: 5px 12px;
+  border-radius: 99px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: .78rem;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.chip:hover { border-color: var(--blue); color: var(--blue); }
+.chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+/* ── 액션 버튼 ── */
+.action-btns {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-shrink: 0;
+}
+.action-btn {
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  border: 2px solid;
+  background: transparent;
+  font-size: 1.4rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s;
+}
+.action-btn.skip  { border-color: var(--red);   color: var(--red); }
+.action-btn.keep  { border-color: var(--green);  color: var(--green); }
+.action-btn.undo  { border-color: var(--muted);  color: var(--muted); width: 42px; height: 42px; font-size: 1rem; }
+.action-btn:hover { transform: scale(1.1); }
+.action-btn.skip:hover  { background: rgba(239,68,68,.1); }
+.action-btn.keep:hover  { background: rgba(34,197,94,.1); }
+
+.action-label { font-size: .65rem; font-weight: 600; text-align: center; margin-top: 3px; color: var(--muted); }
+.action-wrap { display: flex; flex-direction: column; align-items: center; }
+
+/* 키보드 힌트 */
+.kbd-hint {
+  font-size: .7rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border-radius: 5px;
+  margin-top: 4px;
+}
+
+/* ── 완료 화면 ── */
+#screen-done {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+}
+#screen-done .done-icon { font-size: 4rem; }
+#screen-done h2 { font-size: 1.5rem; font-weight: 800; }
+#screen-done p { color: var(--muted); }
+.done-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+.drive-link { color: var(--green); font-size: .85rem; margin-top: 8px; word-break: break-all; }
+
+/* ── Toast ── */
+#toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(60px);
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border);
+  padding: 10px 22px; border-radius: 10px;
+  font-size: .85rem; font-weight: 600;
+  opacity: 0; transition: all .3s; pointer-events: none; z-index: 999;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">Exam<span>Swipe</span></div>
+
+  <div class="progress-wrap" id="progress-wrap" style="display:none">
+    <div class="progress-label" id="progress-label">0 / 0</div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div class="header-actions">
+    <button class="btn btn-ghost" id="restart-btn" style="display:none" onclick="location.reload()">처음으로</button>
+  </div>
+</header>
+
+<!-- ── Upload Screen ── -->
+<div id="screen-upload">
+  <div class="upload-box" id="drop-zone">
+    <div class="icon">📋</div>
+    <h2>시험지를 업로드하세요</h2>
+    <p>이미지(PNG · JPG) 또는 PDF 파일을 드래그하거나 클릭하세요</p>
+    <input type="file" id="file-input" accept="image/*,.pdf">
+    <div id="upload-file-name"></div>
+    <div id="upload-status"></div>
+    <button class="btn btn-blue" id="upload-start-btn" disabled>문제 추출 시작</button>
+  </div>
+</div>
+
+<!-- ── Swipe Screen ── -->
+<div id="screen-swipe">
+
+  <!-- 카드 스택 -->
+  <div class="card-stack" id="card-stack">
+    <div class="card-bg card-bg2"></div>
+    <div class="card-bg"></div>
+    <!-- 메인 카드는 JS로 생성 -->
+  </div>
+
+  <!-- 태그 패널 -->
+  <div class="tag-panel">
+    <!-- 난이도 -->
+    <div class="tag-group">
+      <span class="tag-group-label">난이도</span>
+      <div class="diff-btns" id="diff-btns">
+        <button class="diff-btn" data-v="1">1</button>
+        <button class="diff-btn" data-v="2">2</button>
+        <button class="diff-btn" data-v="3">3</button>
+        <button class="diff-btn" data-v="4">4</button>
+        <button class="diff-btn" data-v="5">5</button>
+      </div>
+    </div>
+
+    <!-- 주제 -->
+    <div class="tag-group" style="flex:1;flex-wrap:wrap">
+      <span class="tag-group-label">주제</span>
+      <div class="topic-chips" id="topic-chips"></div>
+    </div>
+  </div>
+
+  <!-- 액션 버튼 -->
+  <div class="action-btns">
+    <div class="action-wrap">
+      <button class="action-btn undo" id="undo-btn" title="되돌리기">↩</button>
+      <div class="kbd-hint">Z</div>
+    </div>
+    <div class="action-wrap">
+      <button class="action-btn skip" id="skip-btn" title="건너뛰기">✕</button>
+      <div class="action-label">건너뛰기</div>
+      <div class="kbd-hint">← / X</div>
+    </div>
+    <div class="action-wrap">
+      <button class="action-btn keep" id="keep-btn" title="저장">✓</button>
+      <div class="action-label">저장</div>
+      <div class="kbd-hint">→ / Space</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Done Screen ── -->
+<div id="screen-done" style="display:flex;display:none">
+  <div class="done-icon">🎉</div>
+  <h2>분류 완료!</h2>
+  <p id="done-summary"></p>
+  <div class="done-actions">
+    <button class="btn btn-blue" id="save-local-btn">💾 로컬 저장 (JSON)</button>
+    <button class="btn btn-green" id="save-drive-btn">☁️ Google Drive 저장</button>
+  </div>
+  <div class="drive-link" id="drive-link" style="display:none"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── 주제 목록 ──────────────────────────────────────────
+const TOPICS = [
+  "관계대명사","관계부사","시제","가정법","수동태",
+  "부정사","동명사","분사","접속사","전치사",
+  "비교급","도치·강조","어법","어휘",
+  "빈칸추론","주제·요지","순서배열","문장삽입","요약","기타"
+];
+
+// ── 상태 ──────────────────────────────────────────────
+let questions  = [];
+let current    = 0;   // 현재 카드 인덱스
+let sessionId  = null;
+let history    = [];  // 되돌리기용 스택
+
+// 현재 카드의 태그
+let curDiff  = null;
+let curTopic = null;
+
+// ── DOM refs ─────────────────────────────────────────
+const screenUpload = document.getElementById("screen-upload");
+const screenSwipe  = document.getElementById("screen-swipe");
+const screenDone   = document.getElementById("screen-done");
+const cardStack    = document.getElementById("card-stack");
+const progressWrap = document.getElementById("progress-wrap");
+const progressFill = document.getElementById("progress-fill");
+const progressLbl  = document.getElementById("progress-label");
+
+// ── 업로드 ───────────────────────────────────────────
+const dropZone  = document.getElementById("drop-zone");
+const fileInput = document.getElementById("file-input");
+const startBtn  = document.getElementById("upload-start-btn");
+let selectedFile = null;
+
+dropZone.addEventListener("click", () => fileInput.click());
+dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.style.borderColor = "var(--blue)"; });
+dropZone.addEventListener("dragleave", () => { dropZone.style.borderColor = ""; });
+dropZone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropZone.style.borderColor = "";
+  if (e.dataTransfer.files[0]) onFileSelected(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", () => { if (fileInput.files[0]) onFileSelected(fileInput.files[0]); });
+
+function onFileSelected(file) {
+  selectedFile = file;
+  document.getElementById("upload-file-name").textContent = file.name;
+  startBtn.disabled = false;
+}
+
+startBtn.addEventListener("click", async () => {
+  if (!selectedFile) return;
+  startBtn.disabled = true;
+  setUploadStatus("⏳ 문제 추출 중...");
+
+  const form = new FormData();
+  form.append("file", selectedFile);
+
+  try {
+    const res  = await fetch("/process", { method: "POST", body: form });
+    const data = await res.json();
+    if (data.error) { setUploadStatus("오류: " + data.error); startBtn.disabled = false; return; }
+
+    sessionId = data.session_id;
+    questions = data.questions;
+    startSwipe();
+  } catch(e) {
+    setUploadStatus("서버 오류: " + e.message);
+    startBtn.disabled = false;
+  }
+});
+
+function setUploadStatus(msg) {
+  document.getElementById("upload-status").textContent = msg;
+}
+
+// ── 스와이프 시작 ─────────────────────────────────────
+function startSwipe() {
+  screenUpload.style.display = "none";
+  screenSwipe.style.display  = "flex";
+  progressWrap.style.display = "block";
+  document.getElementById("restart-btn").style.display = "block";
+
+  buildTopicChips();
+  showCard();
+}
+
+// ── 주제 칩 빌드 ──────────────────────────────────────
+function buildTopicChips() {
+  const wrap = document.getElementById("topic-chips");
+  wrap.innerHTML = "";
+  TOPICS.forEach(t => {
+    const c = document.createElement("button");
+    c.className = "chip";
+    c.textContent = t;
+    c.dataset.t = t;
+    c.addEventListener("click", () => selectTopic(t));
+    wrap.appendChild(c);
+  });
+}
+
+function selectTopic(t) {
+  curTopic = (curTopic === t) ? null : t;
+  document.querySelectorAll(".chip").forEach(c => {
+    c.classList.toggle("on", c.dataset.t === curTopic);
+  });
+}
+
+function selectDiff(v) {
+  curDiff = (curDiff === v) ? null : v;
+  document.querySelectorAll(".diff-btn").forEach(b => {
+    b.classList.toggle("on", parseInt(b.dataset.v) === curDiff);
+  });
+}
+
+document.getElementById("diff-btns").addEventListener("click", e => {
+  if (e.target.classList.contains("diff-btn"))
+    selectDiff(parseInt(e.target.dataset.v));
+});
+
+// ── 카드 표시 ─────────────────────────────────────────
+function showCard() {
+  // 기존 카드 제거
+  const old = cardStack.querySelector(".swipe-card");
+  if (old) old.remove();
+
+  updateProgress();
+
+  if (current >= questions.length) {
+    endSwipe();
+    return;
+  }
+
+  // 태그 초기화
+  const q = questions[current];
+  curDiff  = q.difficulty || null;
+  curTopic = q.topic      || null;
+  refreshTags();
+
+  // 카드 생성
+  const card = document.createElement("div");
+  card.className = "swipe-card";
+  card.innerHTML = `
+    <div class="card-num-badge">문제 ${q.id} <span style="opacity:.6;font-weight:400">(${current+1}/${questions.length})</span></div>
+    <div class="hint-overlay hint-left"  id="hint-left">✕ 건너뛰기</div>
+    <div class="hint-overlay hint-right" id="hint-right">✓ 저장</div>
+    <div class="card-img-wrap">
+      <img src="/img/${sessionId}/${q.image_file}" alt="문제 ${q.id}" draggable="false">
+    </div>
+  `;
+  cardStack.appendChild(card);
+  setupDrag(card);
+}
+
+function refreshTags() {
+  document.querySelectorAll(".diff-btn").forEach(b =>
+    b.classList.toggle("on", parseInt(b.dataset.v) === curDiff));
+  document.querySelectorAll(".chip").forEach(c =>
+    c.classList.toggle("on", c.dataset.t === curTopic));
+}
+
+function updateProgress() {
+  const pct = questions.length ? (current / questions.length) * 100 : 0;
+  progressFill.style.width = pct + "%";
+  progressLbl.textContent  = `${current} / ${questions.length}`;
+}
+
+// ── 드래그 (마우스 + 터치) ────────────────────────────
+function setupDrag(card) {
+  let startX = 0, startY = 0, dx = 0;
+  let dragging = false;
+  const THRESHOLD = 80;
+
+  function onStart(x, y) { startX = x; startY = y; dragging = true; }
+  function onMove(x) {
+    if (!dragging) return;
+    dx = x - startX;
+    card.style.transform = `translateX(${dx}px) rotate(${dx * 0.04}deg)`;
+    const hintLeft  = card.querySelector(".hint-left");
+    const hintRight = card.querySelector(".hint-right");
+    hintLeft.style.opacity  = dx < -20 ? Math.min(1, (-dx - 20) / 60) : 0;
+    hintRight.style.opacity = dx >  20 ? Math.min(1, (dx  - 20) / 60) : 0;
+  }
+  function onEnd() {
+    if (!dragging) return;
+    dragging = false;
+    card.style.transform = "";
+    card.querySelector(".hint-left").style.opacity  = 0;
+    card.querySelector(".hint-right").style.opacity = 0;
+    if      (dx < -THRESHOLD) doSkip();
+    else if (dx >  THRESHOLD) doKeep();
+  }
+
+  card.addEventListener("mousedown",  e => onStart(e.clientX, e.clientY));
+  window.addEventListener("mousemove", e => { if (dragging) onMove(e.clientX); });
+  window.addEventListener("mouseup",   () => onEnd());
+
+  card.addEventListener("touchstart", e => onStart(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
+  window.addEventListener("touchmove", e => { if (dragging) onMove(e.touches[0].clientX); }, { passive: true });
+  window.addEventListener("touchend",  () => onEnd());
+}
+
+// ── 액션 ─────────────────────────────────────────────
+function commitCurrentTags() {
+  if (current < questions.length) {
+    questions[current].difficulty = curDiff;
+    questions[current].topic      = curTopic || "";
+  }
+}
+
+function doSkip() {
+  commitCurrentTags();
+  animateCard("animate-left", () => {
+    history.push({ idx: current, snap: { ...questions[current] } });
+    questions[current].skipped = true;
+    current++;
+    showCard();
+  });
+}
+
+function doKeep() {
+  if (!curDiff && !curTopic) {
+    toast("난이도 또는 주제를 먼저 선택하세요 👆");
+    shakeCard();
+    return;
+  }
+  commitCurrentTags();
+  animateCard("animate-right", () => {
+    history.push({ idx: current, snap: { ...questions[current] } });
+    current++;
+    showCard();
+  });
+}
+
+function doUndo() {
+  if (!history.length) { toast("되돌릴 항목이 없습니다"); return; }
+  const last = history.pop();
+  current = last.idx;
+  Object.assign(questions[current], last.snap);
+  // 되돌린 문제에서 skipped, difficulty, topic 복원
+  showCard();
+  toast("↩ 되돌렸습니다");
+}
+
+function animateCard(cls, cb) {
+  const card = cardStack.querySelector(".swipe-card");
+  if (!card) { cb(); return; }
+  card.classList.add(cls);
+  card.addEventListener("animationend", () => { card.remove(); cb(); }, { once: true });
+}
+
+function shakeCard() {
+  const card = cardStack.querySelector(".swipe-card");
+  if (!card) return;
+  card.style.animation = "none";
+  card.style.transform = "translateX(-10px)";
+  setTimeout(() => { card.style.transform = "translateX(10px)"; }, 80);
+  setTimeout(() => { card.style.transform = ""; }, 160);
+}
+
+// ── 버튼 연결 ─────────────────────────────────────────
+document.getElementById("skip-btn").addEventListener("click", doSkip);
+document.getElementById("keep-btn").addEventListener("click", doKeep);
+document.getElementById("undo-btn").addEventListener("click", doUndo);
+
+// ── 키보드 단축키 ─────────────────────────────────────
+document.addEventListener("keydown", e => {
+  if (screenSwipe.style.display === "none") return;
+  const tag = e.target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+  if (e.key === "ArrowLeft"  || e.key === "x" || e.key === "X") { e.preventDefault(); doSkip(); }
+  if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); doKeep(); }
+  if (e.key === "z" || e.key === "Z") { e.preventDefault(); doUndo(); }
+
+  // 숫자키 1-5 → 난이도
+  if (["1","2","3","4","5"].includes(e.key)) selectDiff(parseInt(e.key));
+});
+
+// ── 완료 ─────────────────────────────────────────────
+function endSwipe() {
+  screenSwipe.style.display = "none";
+  screenDone.style.display  = "flex";
+
+  const kept    = questions.filter(q => !q.skipped && (q.difficulty || q.topic)).length;
+  const skipped = questions.filter(q => q.skipped).length;
+  document.getElementById("done-summary").textContent =
+    `총 ${questions.length}문제 중 ${kept}문제 저장, ${skipped}문제 건너뜀`;
+}
+
+document.getElementById("save-local-btn").addEventListener("click", async () => {
+  const res  = await fetch("/save_local", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, questions })
+  });
+  const data = await res.json();
+  toast(data.success ? `저장 완료: ${data.path}` : "저장 실패");
+});
+
+document.getElementById("save-drive-btn").addEventListener("click", async () => {
+  toast("Google Drive 업로드 중...");
+  const res  = await fetch("/save_drive", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, questions })
+  });
+  const data = await res.json();
+  if (data.success) {
+    toast("Drive 업로드 완료!");
+    const lnk = document.getElementById("drive-link");
+    lnk.style.display = "block";
+    lnk.innerHTML = `<a href="${data.link}" target="_blank" style="color:var(--green)">Drive에서 보기 →</a>`;
+  } else if (data.need_setup) {
+    toast("credentials.json을 서버 폴더에 넣어주세요");
+  } else {
+    toast("오류: " + data.error);
+  }
+});
+
+// ── Toast ─────────────────────────────────────────────
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove("show"), 2800);
+}
+</script>
+</body>
+</html>
