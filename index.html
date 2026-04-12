@@ -957,6 +957,112 @@
             color: var(--muted);
         }
         .top-bar-key-btn:hover { border-color: var(--blue); color: var(--blue); }
+
+        /* ── Top Tab Navigation ────────────────────────── */
+        .top-tabs {
+            display: flex;
+            align-items: stretch;
+            gap: 0;
+            margin-left: 1.25rem;
+            height: 100%;
+        }
+        .top-tab {
+            padding: 0 1.1rem;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--muted);
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+            white-space: nowrap;
+        }
+        .top-tab:hover { color: var(--text); }
+        .top-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+        /* ── Bank Sub-tabs ──────────────────────────────── */
+        .bk-sub-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1rem;
+            margin-top: -0.25rem;
+        }
+        .bk-sub-tab {
+            padding: 0.5rem 1rem;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--muted);
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .bk-sub-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+        /* ── Bank Items ─────────────────────────────────── */
+        .bk-item {
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 0.4rem;
+        }
+        .bk-item-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.75rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .bk-item-num {
+            background: var(--blue);
+            color: #fff;
+            font-size: 0.72rem;
+            font-weight: 700;
+            border-radius: 999px;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .bk-item-source { font-size: 0.72rem; color: var(--muted); margin-left: auto; margin-right: 0.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+        .bk-item-preview { padding: 0.5rem 0.75rem; font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
+        .bk-del-btn {
+            border: none;
+            background: none;
+            color: var(--muted);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0 4px;
+            flex-shrink: 0;
+            line-height: 1;
+        }
+        .bk-del-btn:hover { color: var(--red); }
+
+        /* ── Bank Select Items ──────────────────────────── */
+        .bk-check-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.1s;
+        }
+        .bk-check-item:hover { background: #f0f4ff; }
+        .bk-check-item input[type="checkbox"] { flex-shrink: 0; }
+
+        /* ── Bank scrollable lists ──────────────────────── */
+        #bk-grammar-list,
+        #bk-passage-list { max-height: 280px; overflow-y: auto; }
+        #bk-sel-grammar,
+        #bk-sel-passage  { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; padding: 0.4rem; background: #fafafa; }
     </style>
 </head>
 <body>
@@ -1000,6 +1106,10 @@
         <span>Ant Colony</span>
         <span class="version-pill">v2.5</span>
     </a>
+    <nav class="top-tabs">
+        <button class="top-tab active" data-tab="exam">⚙️ 시험지 생성기</button>
+        <button class="top-tab" data-tab="bank">📚 문제 은행</button>
+    </nav>
     <div class="top-bar-right">
         <span id="key-status-bar"></span>
         <span id="api-call-counter">API 호출: 0회</span>
@@ -1013,8 +1123,11 @@
 <span id="key-status" hidden></span>
 
 <!-- ══════════════════════════════════════════════════════
-     MAIN GRID
+     TAB: EXAM GENERATOR (기존 기능)
 ════════════════════════════════════════════════════════ -->
+<div id="tab-exam" style="display:block;">
+
+<!-- MAIN GRID -->
 <main class="main-grid">
 
     <!-- ════════════════════════════════════════
@@ -1160,6 +1273,152 @@
     </div>
 </section>
 
+</div><!-- /#tab-exam -->
+
+<!-- ══════════════════════════════════════════════════════
+     TAB: QUESTION BANK (문제 은행)
+════════════════════════════════════════════════════════ -->
+<div id="tab-bank" style="display:none;">
+<div class="main-grid">
+
+    <!-- ════════════════════════════════════════
+         LEFT PANEL: 문제/지문 저장소
+    ════════════════════════════════════════ -->
+    <section class="panel">
+        <div class="panel-header">
+            <span>📚</span>
+            <h2>문제/지문 저장소</h2>
+        </div>
+        <div class="panel-body">
+
+            <!-- Sub-tabs -->
+            <div class="bk-sub-tabs">
+                <button class="bk-sub-tab active" data-target="bk-panel-grammar">📐 문법 문제&nbsp;<span id="bk-grammar-count" style="font-weight:400; color:var(--muted);">0개</span></button>
+                <button class="bk-sub-tab" data-target="bk-panel-passage">📖 독해 지문&nbsp;<span id="bk-passage-count" style="font-weight:400; color:var(--muted);">0개</span></button>
+            </div>
+
+            <!-- ── 문법 문제 패널 ── -->
+            <div id="bk-panel-grammar" class="bk-subtab-panel">
+
+                <div class="step">
+                    <div class="step-title">PDF 업로드 → AI 문제 추출</div>
+                    <div class="step-body">
+                        <input type="file" id="bk-grammar-file" accept=".pdf" hidden>
+                        <div id="bk-grammar-drop" class="drop-zone">
+                            <span class="drop-zone-icon">📂</span>
+                            <p class="drop-zone-text">문법 문제 PDF 드래그 또는 클릭</p>
+                            <p class="drop-zone-sub">지원: PDF · HWP는 PDF로 변환 후 업로드</p>
+                        </div>
+                        <button id="bk-grammar-parse-btn" class="btn btn-primary" disabled>🤖 AI로 문제 추출</button>
+                        <div id="bk-parse-log" class="log-box" style="height:100px;">대기 중...</div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">저장된 문법 문제</div>
+                    <div class="step-body">
+                        <div id="bk-grammar-list">
+                            <p class="muted">저장된 문제가 없습니다.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /bk-panel-grammar -->
+
+            <!-- ── 독해 지문 패널 ── -->
+            <div id="bk-panel-passage" class="bk-subtab-panel" style="display:none;">
+
+                <div class="step">
+                    <div class="step-title">지문 추가</div>
+                    <div class="step-body">
+                        <input type="file" id="bk-passage-file" accept=".pdf" hidden>
+                        <div id="bk-passage-drop" class="drop-zone">
+                            <span class="drop-zone-icon">📂</span>
+                            <p class="drop-zone-text">독해 지문 PDF 드래그 또는 클릭</p>
+                            <p class="drop-zone-sub">또는 아래에 직접 붙여넣기</p>
+                        </div>
+                        <label class="field-label" style="margin-top:0.5rem;">또는 직접 입력</label>
+                        <textarea id="bk-passage-manual" placeholder="영어 지문을 여기에 붙여넣으세요..." style="min-height:100px;"></textarea>
+                        <input type="text" id="bk-passage-title" placeholder="지문 제목 (예: 2024 수능 34번)" style="padding:0.6rem 0.8rem; border:1px solid var(--border); border-radius:4px; width:100%; font-family:inherit; font-size:0.9rem; background:#fff;">
+                        <button id="bk-passage-save-btn" class="btn btn-success">💾 지문 저장</button>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">저장된 독해 지문</div>
+                    <div class="step-body">
+                        <div id="bk-passage-list">
+                            <p class="muted">저장된 지문이 없습니다.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div><!-- /bk-panel-passage -->
+
+        </div>
+    </section>
+
+    <!-- ════════════════════════════════════════
+         RIGHT PANEL: 출제 구성
+    ════════════════════════════════════════ -->
+    <section class="panel">
+        <div class="panel-header">
+            <span>📝</span>
+            <h2>출제 구성</h2>
+        </div>
+        <div class="panel-body">
+
+            <!-- 문법 문제 선택 -->
+            <div class="step">
+                <div class="step-title">문법 문제 선택 (저장소에서)</div>
+                <div class="step-body">
+                    <div style="display:flex; gap:0.5rem; margin-bottom:0.5rem;">
+                        <button id="bk-sel-grammar-all" class="btn btn-outline" style="width:auto; padding:0.3rem 0.75rem; font-size:0.78rem;">전체 선택</button>
+                        <button id="bk-sel-grammar-none" class="btn btn-outline" style="width:auto; padding:0.3rem 0.75rem; font-size:0.78rem;">전체 해제</button>
+                    </div>
+                    <div id="bk-sel-grammar">
+                        <p class="muted" style="padding:0.5rem; font-size:0.83rem;">문법 문제를 먼저 저장소에 추가해주세요.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 독해 지문 선택 -->
+            <div class="step">
+                <div class="step-title">독해 지문 선택 &amp; AI 문제 생성</div>
+                <div class="step-body">
+                    <div style="display:flex; gap:0.5rem; margin-bottom:0.5rem;">
+                        <button id="bk-sel-passage-all" class="btn btn-outline" style="width:auto; padding:0.3rem 0.75rem; font-size:0.78rem;">전체 선택</button>
+                        <button id="bk-sel-passage-none" class="btn btn-outline" style="width:auto; padding:0.3rem 0.75rem; font-size:0.78rem;">전체 해제</button>
+                    </div>
+                    <div id="bk-sel-passage">
+                        <p class="muted" style="padding:0.5rem; font-size:0.83rem;">독해 지문을 먼저 저장소에 추가해주세요.</p>
+                    </div>
+                    <div class="row-inline" style="margin-top:0.75rem;">
+                        <label class="field-label" for="bk-q-per-passage">지문당 문항 수</label>
+                        <input type="number" id="bk-q-per-passage" min="1" max="5" value="2">
+                        <span class="muted" style="font-size:0.8rem;">최대 5문항</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generate -->
+            <button id="bk-generate-btn" class="btn btn-primary">📝 시험지 구성하기</button>
+
+            <!-- Log -->
+            <div id="bk-log" class="log-box">대기 중...</div>
+
+            <!-- PDF Export -->
+            <button id="bk-pdf-btn" class="btn btn-pdf" style="display:none;">📄 시험지 PDF 저장</button>
+
+            <!-- Results -->
+            <div id="bk-results"></div>
+
+        </div>
+    </section>
+
+</div><!-- /.main-grid (bank) -->
+</div><!-- /#tab-bank -->
+
 <!-- ══════════════════════════════════════════════════════
      EXAM PREVIEW MODAL
 ════════════════════════════════════════════════════════ -->
@@ -1179,6 +1438,7 @@
 </div><!-- /#app-shell -->
 
 <script src="colony_engine.js?v=2.5.0"></script>
+<script src="bank_engine.js?v=1.0.0"></script>
 <script>
 // ── Landing Screen Logic ─────────────────────────────
 (function () {
