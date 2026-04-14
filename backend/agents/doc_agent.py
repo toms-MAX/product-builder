@@ -173,9 +173,22 @@ class DocAgent:
         self.db_path = Path(db_path) if db_path else DB_PATH
         self.ai = ai_client or AIClient()
 
-    def process(self, file_path: str | Path, level: str, book_title: str) -> dict:
+    def process(
+        self,
+        file_path: str | Path,
+        level: str,
+        book_title: str,
+        progress_callback=None,
+    ) -> dict:
         """
         파일을 처리하고 words 테이블에 저장.
+
+        Args:
+            progress_callback: (event: dict) -> None
+                event 예시:
+                  {"type": "step",     "step": 1, "total_steps": 4, "message": "PDF 텍스트 추출 중..."}
+                  {"type": "progress", "current": 3, "total": 100, "word": "accomplish", "pct": 3}
+                  {"type": "done",     "stats": {...}}
 
         반환:
           {
@@ -186,6 +199,10 @@ class DocAgent:
             "words":       저장된 단어 목록,
           }
         """
+        def emit(event: dict):
+            if progress_callback:
+                progress_callback(event)
+
         file_path = Path(file_path)
         print(f"\n{'='*55}")
         print(f"  DOC-IN 에이전트 시작")
@@ -206,6 +223,7 @@ class DocAgent:
             return {"total": 0, "saved": 0, "skipped": 0, "low_quality": 0, "words": []}
 
         if suffix == ".pdf":
+            emit({"type": "step", "step": 1, "total_steps": 4, "message": "PDF 텍스트 추출 중..."})
             print("  [1/4] PDF 텍스트 추출 중...")
             pages = extract_text_from_pdf(file_path)
 
@@ -224,12 +242,14 @@ class DocAgent:
                         raw_texts.append(text)
 
         elif suffix in {".png", ".jpg", ".jpeg", ".webp"}:
+            emit({"type": "step", "step": 1, "total_steps": 4, "message": "이미지 Vision 처리 중..."})
             print("  [1/4] 이미지 Vision 처리 중...")
             text = self.ai.read_image(str(file_path))
             if text:
                 raw_texts = [text]
 
         elif suffix == ".txt":
+            emit({"type": "step", "step": 1, "total_steps": 4, "message": "텍스트 파일 읽기..."})
             print("  [1/4] 텍스트 파일 읽기...")
             raw_texts = [file_path.read_text(encoding="utf-8")]
 
@@ -238,6 +258,7 @@ class DocAgent:
             return {"total": 0, "saved": 0, "skipped": 0, "low_quality": 0, "words": []}
 
         # ── 2. 단어 파싱 ──────────────────────────────
+        emit({"type": "step", "step": 2, "total_steps": 4, "message": "단어 파싱 중..."})
         print("  [2/4] 단어 파싱 중...")
         all_words: list[tuple[str, str]] = []  # (word, meaning_ko)
         for text in raw_texts:
@@ -257,33 +278,48 @@ class DocAgent:
 
         print(f"        {len(unique_words)}개 단어 후보 파악")
 
-        # ── 3. AI 태깅 + 품질 검사 ───────────────────
-        print("  [3/4] 자동 태깅 및 품질 검사 중...")
+        # ── 3. AI 배치 태깅 (단어 전체를 한꺼번에 처리) ──
+        total_words = len(unique_words)
+        word_list = [w for w, _ in unique_words]
+
+        emit({"type": "step", "step": 3, "total_steps": 4,
+              "message": f"AI 배치 태깅 중... (총 {total_words}개, {max(1, (total_words+49)//50)}번 호출)"})
+        print(f"  [3/4] AI 배치 태깅 중... ({total_words}개 → "
+              f"API {max(1,(total_words+49)//50)*2}번 호출)")
+
+        # 배치로 레벨·품사 한 번에 분류 (50개씩 묶음)
+        if self.ai.available:
+            print("        레벨 분류 중...", flush=True)
+            level_map = self.ai.classify_level_batch(word_list)
+            print("        품사 분류 중...", flush=True)
+            pos_map   = self.ai.classify_pos_batch(word_list)
+        else:
+            level_map = {w: level for w in word_list}
+            pos_map   = {w: "noun" for w in word_list}
+
+        # 품질 점수: 뜻이 있으면 8, 없으면 5 (룰 기반, AI 불필요)
+        def _rule_score(meaning: str) -> int:
+            return 8 if meaning and meaning.strip() else 5
+
         ensure_db(self.db_path)
         conn = sqlite3.connect(self.db_path)
 
         stats = {"total": 0, "saved": 0, "skipped": 0, "low_quality": 0, "words": []}
 
-        for word, meaning_ko in unique_words:
+        for idx, (word, meaning_ko) in enumerate(unique_words, 1):
             stats["total"] += 1
+            pct = int(idx / total_words * 100) if total_words else 100
+            print(f"\r        [{idx}/{total_words}] {pct:3d}%  {word:<20}", end="", flush=True)
+            emit({"type": "progress", "current": idx, "total": total_words,
+                  "word": word, "pct": pct})
 
-            # 레벨 분류 (AI or 입력값 그대로)
-            ai_level = self.ai.classify_level(word) if self.ai.available else level
-            # 입력 레벨과 AI 레벨 중 더 구체적인 것 사용
+            # 배치 결과 사용 (루프 안에서 AI 호출 없음)
+            ai_level  = level_map.get(word, level)
             final_level = ai_level if ai_level != "중2" else level
             final_grade = LEVEL_TO_GRADE.get(final_level, grade_num)
-
-            # 품사 분류
-            pos = self.ai.classify_pos(word) if self.ai.available else "noun"
-
-            # 품질 점수
-            score = self.ai.score_quality(
-                stem=word,
-                choices=None,
-                answer=meaning_ko or None,
-            )
+            pos   = pos_map.get(word, "noun")
+            score = _rule_score(meaning_ko)
             needs_review = score < QUALITY_THRESHOLD
-            verified = 0  # 검수는 대표님이 직접
 
             record = {
                 "word_id":     str(uuid.uuid4()),
@@ -304,7 +340,7 @@ class DocAgent:
                 "noun_plural": None,
                 "adj_comp":    None,
                 "adj_super":   None,
-                "verified":    verified,
+                "verified":    0,
             }
 
             saved = save_word(conn, record)
@@ -321,8 +357,14 @@ class DocAgent:
         conn.close()
 
         # ── 4. 요약 리포트 ────────────────────────────
+        print()  # \r 이후 줄바꿈
+        emit({"type": "step", "step": 4, "total_steps": 4, "message": "완료"})
         print("  [4/4] 완료\n")
         self._print_report(stats, book_title)
+        emit({"type": "done", "stats": {
+            "total": stats["total"], "saved": stats["saved"],
+            "skipped": stats["skipped"], "low_quality": stats["low_quality"],
+        }})
         return stats
 
     def _print_report(self, stats: dict, book_title: str):

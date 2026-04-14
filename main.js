@@ -107,26 +107,71 @@ async function submitDocIn() {
   fd.append('book_title', book);
 
   const btn  = document.getElementById('doc-btn');
+  const fill = document.getElementById('doc-fill');
+  const text = document.getElementById('doc-prog-text');
   const prog = document.getElementById('doc-progress');
   const res  = document.getElementById('doc-result');
+
   btn.disabled = true;
   prog.style.display = 'block';
-  animateProgress('doc-fill', 'doc-prog-text', '처리 중...');
+  fill.style.width = '0%';
+  text.textContent = '파일 업로드 중...';
   res.style.display = 'none';
 
   try {
-    const d = await API.docIn(fd);
-    prog.style.display = 'none';
-    if (d.error) {
-      res.className = 'result-box result-error';
-      res.innerHTML = `❌ ${d.error}`;
-    } else {
-      res.className = 'result-box result-success';
-      res.innerHTML = `✅ 완료 — 총 <strong>${d.total}</strong>개 중 <strong>${d.saved}</strong>개 저장 / ${d.skipped}개 중복 / ${d.low_quality}개 검수필요`;
-      updateStatBadges(d.db);
-      toast(`${d.saved}개 단어 저장 완료`, 'ok');
+    const response = await fetch(`${API_BASE}/api/doc-in/stream`, { method: 'POST', body: fd });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      throw new Error(err.error || `HTTP ${response.status}`);
     }
-    res.style.display = 'block';
+
+    const reader  = response.body.getReader();
+    const decoder = new TextDecoder();
+    let   buffer  = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE는 "\n\n"으로 메시지 구분
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop();  // 마지막 불완전 조각 보관
+
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data:')) continue;
+        let event;
+        try { event = JSON.parse(line.slice(5).trim()); } catch { continue; }
+
+        if (event.type === 'step') {
+          // 단계 표시: 1~3단계는 25/50/75%, 4단계(완료)는 100%
+          const stepPct = Math.round((event.step / event.total_steps) * 100);
+          fill.style.width = stepPct + '%';
+          text.textContent = `[${event.step}/${event.total_steps}] ${event.message}`;
+
+        } else if (event.type === 'progress') {
+          fill.style.width = event.pct + '%';
+          text.textContent = `처리 중... ${event.current}/${event.total} (${event.pct}%)`;
+
+        } else if (event.type === 'done') {
+          fill.style.width = '100%';
+          prog.style.display = 'none';
+          const d = event.stats;
+          res.className = 'result-box result-success';
+          res.innerHTML  = `✅ 완료 — 총 <strong>${d.total}</strong>개 중 <strong>${d.saved}</strong>개 저장 / ${d.skipped}개 중복 / ${d.low_quality}개 검수필요`;
+          res.style.display = 'block';
+          if (event.db) updateStatBadges(event.db);
+          toast(`${d.saved}개 단어 저장 완료`, 'ok');
+
+        } else if (event.type === 'error') {
+          prog.style.display = 'none';
+          res.className = 'result-box result-error';
+          res.innerHTML = `❌ ${event.message}`;
+          res.style.display = 'block';
+        }
+      }
+    }
   } catch (e) {
     prog.style.display = 'none';
     res.className = 'result-box result-error';

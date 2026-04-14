@@ -232,12 +232,13 @@ class SlotEngine:
     def make_choices(self, correct_word: str, slot: str,
                      grade_num: int = 4, count: int = 4) -> tuple[list[str], int]:
         """
-        정답 포함 보기 count+1개를 생성하고 셔플.
+        정답 포함 보기 count개를 생성하고 셔플.
 
         반환: (보기 리스트, 정답 인덱스)
         """
         distractors: list[str] = []
         used = {correct_word}
+        need = count - 1  # 정답 1개 포함이므로 오답은 count-1개
 
         # DB 또는 폴백에서 오답 수집
         db_words = self._fetch_from_db(slot, grade_num, exclude=used)
@@ -245,17 +246,17 @@ class SlotEngine:
             if w["word"] not in used:
                 distractors.append(w["word"])
                 used.add(w["word"])
-            if len(distractors) >= count:
+            if len(distractors) >= need:
                 break
 
         # 부족하면 내장 단어풀에서 추가
-        if len(distractors) < count:
+        if len(distractors) < need:
             for w in FALLBACK_WORDS.get(slot, []):
                 if w["word"] not in used:
                     distractors.append(w["word"])
                     used.add(w["word"])
-                if len(distractors) >= count:
+                if len(distractors) >= need:
                     break
 
-        choices = [correct_word] + distractors[:count]
+        choices = [correct_word] + distractors[:need]
         return self.shuffle_choices(choices, correct_word)

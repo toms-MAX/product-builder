@@ -9,14 +9,16 @@ app.py — Flask API 서버
 
 import json
 import os
+import queue as queue_module
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from flask import Flask, jsonify, request, send_from_directory, send_file
+from flask import Flask, Response, jsonify, request, send_from_directory, send_file, stream_with_context
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
@@ -105,6 +107,68 @@ def api_doc_in():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/doc-in/stream", methods=["POST"])
+def api_doc_in_stream():
+    """DOC-IN 처리 진행률을 Server-Sent Events로 실시간 스트리밍."""
+    if "file" not in request.files:
+        return jsonify({"error": "파일이 없습니다."}), 400
+
+    file  = request.files["file"]
+    level = request.form.get("level", "고1")
+    book  = request.form.get("book_title", "미분류")
+
+    if not file.filename:
+        return jsonify({"error": "파일명이 없습니다."}), 400
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXT:
+        return jsonify({"error": f"지원하지 않는 파일 형식: {ext}"}), 400
+
+    filename  = secure_filename(file.filename)
+    save_path = UPLOAD_DIR / filename
+    file.save(str(save_path))
+
+    q: queue_module.Queue = queue_module.Queue()
+
+    def run():
+        def on_progress(event: dict):
+            # done 이벤트에는 db 통계 추가
+            if event.get("type") == "done":
+                event["db"] = _db_stats()
+            q.put(event)
+
+        try:
+            agent = DocAgent(db_path=DB_PATH)
+            agent.process(str(save_path), level=level, book_title=book,
+                          progress_callback=on_progress)
+        except Exception as e:
+            q.put({"type": "error", "message": str(e)})
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+
+    @stream_with_context
+    def generate():
+        while True:
+            try:
+                event = q.get(timeout=120)
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                if event.get("type") in ("done", "error"):
+                    break
+            except queue_module.Empty:
+                yield "data: {\"type\": \"error\", \"message\": \"처리 시간 초과\"}\n\n"
+                break
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control":    "no-cache",
+            "X-Accel-Buffering": "no",   # Nginx 버퍼링 비활성화
+        },
+    )
 
 
 # ── GEN ───────────────────────────────────────────────

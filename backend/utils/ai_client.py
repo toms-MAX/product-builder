@@ -165,7 +165,93 @@ class AIClient:
                 return int(match.group(1))
         return DEFAULT
 
-    # ── 5. 자연스러운 단어 조합 선택 ──────────────────
+    # ── 5. 레벨 배치 분류 (50개씩 묶어서 1번 호출) ────
+    def classify_level_batch(self, words: list[str],
+                              chunk_size: int = 50) -> dict[str, str]:
+        """
+        여러 단어의 레벨을 한 번에 분류.
+        반환: {"word": "레벨", ...}
+        폴백: 모두 "중2"
+        """
+        DEFAULT = "중2"
+        if not words:
+            return {}
+        if not self.available:
+            return {w: DEFAULT for w in words}
+
+        result: dict[str, str] = {}
+        for i in range(0, len(words), chunk_size):
+            chunk = words[i : i + chunk_size]
+            words_str = "\n".join(f"- {w}" for w in chunk)
+            prompt = (
+                "다음 영어 단어들의 난이도를 한국 교육과정 기준으로 분류하세요.\n"
+                "레벨은 반드시 다음 중 하나: 중1, 중2, 중3, 고1, 고2, 고3, 수능, 수능고급\n\n"
+                f"단어 목록:\n{words_str}\n\n"
+                "JSON 형식으로만 반환. 예시: {\"accomplish\": \"고1\", \"diligent\": \"고2\"}\n"
+                "JSON만:"
+            )
+            raw = self._call(prompt)
+            if raw:
+                try:
+                    m = re.search(r"\{.*\}", raw, re.DOTALL)
+                    if m:
+                        parsed = json.loads(m.group())
+                        for w in chunk:
+                            lv = parsed.get(w, DEFAULT)
+                            result[w] = lv if lv in VALID_LEVELS else DEFAULT
+                        continue
+                except (json.JSONDecodeError, KeyError):
+                    pass
+            # 호출 실패 시 청크 전체 기본값
+            for w in chunk:
+                result[w] = DEFAULT
+
+        return result
+
+    # ── 6. 품사 배치 분류 (50개씩 묶어서 1번 호출) ────
+    def classify_pos_batch(self, words: list[str],
+                            chunk_size: int = 50) -> dict[str, str]:
+        """
+        여러 단어의 품사를 한 번에 분류.
+        반환: {"word": "pos", ...}
+        폴백: 모두 "noun"
+        """
+        DEFAULT = "noun"
+        if not words:
+            return {}
+        if not self.available:
+            return {w: DEFAULT for w in words}
+
+        result: dict[str, str] = {}
+        for i in range(0, len(words), chunk_size):
+            chunk = words[i : i + chunk_size]
+            words_str = "\n".join(f"- {w}" for w in chunk)
+            prompt = (
+                "다음 영어 단어들의 품사를 분류하세요.\n"
+                "품사는 반드시 다음 중 하나: noun, verb, adjective, adverb\n\n"
+                f"단어 목록:\n{words_str}\n\n"
+                "JSON 형식으로만 반환. 예시: {\"accomplish\": \"verb\", \"diligent\": \"adjective\"}\n"
+                "JSON만:"
+            )
+            raw = self._call(prompt)
+            if raw:
+                try:
+                    m = re.search(r"\{.*\}", raw, re.DOTALL)
+                    if m:
+                        parsed = json.loads(m.group())
+                        for w in chunk:
+                            pos = parsed.get(w, DEFAULT)
+                            pos = pos.lower() if isinstance(pos, str) else DEFAULT
+                            result[w] = pos if pos in VALID_POS else DEFAULT
+                        continue
+                except (json.JSONDecodeError, KeyError):
+                    pass
+            for w in chunk:
+                result[w] = DEFAULT
+
+        return result
+
+    # ── 7. 자연스러운 단어 조합 선택 ──────────────────
     def select_combo(self, template: str, candidates: dict[str, list[str]]) -> dict[str, str]:
         """
         템플릿 슬롯에 들어갈 가장 자연스러운 단어 조합 선택.

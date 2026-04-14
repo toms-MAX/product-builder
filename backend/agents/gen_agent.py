@@ -142,6 +142,11 @@ class GenAgent:
             answer_word = slot_result.get(answer_slot, "") if answer_slot else ""
 
             if answer_slot and answer_word:
+                # FIB 계열: stem에서 정답 단어를 _____로 교체
+                q_type = tmpl.get("q_type", "FIB_MCQ")
+                if q_type in ("FIB_MCQ", "FIB_SA", "WORDFORM"):
+                    stem = stem.replace(answer_word, "_____", 1)
+
                 choices, answer_idx = self.slot.make_choices(
                     answer_word, answer_slot, grade_num, count=4
                 )
