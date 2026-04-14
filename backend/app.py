@@ -28,7 +28,7 @@ from backend.agents.doc_agent    import ensure_db
 DB_PATH     = ROOT / "backend" / "db" / "qbank.db"
 UPLOAD_DIR  = ROOT / "data" / "uploads"
 OUTPUT_DIR  = ROOT / "output"
-FRONTEND    = ROOT / "frontend"
+FRONTEND    = ROOT
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
