@@ -1,15 +1,35 @@
 /* ── API 기본 설정 ──────────────────────────────────── */
+
+// 안전한 fetch: 응답이 JSON이 아니거나 서버 없을 때 에러 객체 반환
+async function safeFetch(url, options = {}) {
+  try {
+    const r = await fetch(url, options);
+    const text = await r.text();
+    if (!text || !text.trim()) throw new Error('서버 응답이 비어 있습니다. 로컬 서버가 실행 중인지 확인해주세요.');
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error('서버에 연결할 수 없습니다. 로컬에서 python backend/app.py 를 실행해주세요.');
+    }
+  } catch (e) {
+    if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+      throw new Error('서버에 연결할 수 없습니다. 로컬에서 python backend/app.py 를 실행해주세요.');
+    }
+    throw e;
+  }
+}
+
 const API = {
-  stats:          () => fetch('/api/stats').then(r => r.json()),
-  docIn:    (fd)  => fetch('/api/doc-in',  { method:'POST', body: fd }).then(r => r.json()),
-  gen:      (d)   => fetch('/api/gen',     { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(d) }).then(r => r.json()),
-  build:    (d)   => fetch('/api/build',   { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(d) }).then(r => r.json()),
+  stats:          () => safeFetch('/api/stats'),
+  docIn:    (fd)  => safeFetch('/api/doc-in',  { method:'POST', body: fd }),
+  gen:      (d)   => safeFetch('/api/gen',     { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(d) }),
+  build:    (d)   => safeFetch('/api/build',   { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(d) }),
   download: (fn)  => window.open(`/api/build/download/${fn}`),
   review: {
-    report:  ()        => fetch('/api/review/report').then(r => r.json()),
-    list:    (t,lim)   => fetch(`/api/review/list/${t}?limit=${lim||50}`).then(r => r.json()),
-    approve: (t, ids)  => fetch('/api/review/approve', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t, ids}) }).then(r => r.json()),
-    reject:  (t, ids)  => fetch('/api/review/reject',  { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t, ids}) }).then(r => r.json()),
+    report:  ()        => safeFetch('/api/review/report'),
+    list:    (t,lim)   => safeFetch(`/api/review/list/${t}?limit=${lim||50}`),
+    approve: (t, ids)  => safeFetch('/api/review/approve', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t, ids}) }),
+    reject:  (t, ids)  => safeFetch('/api/review/reject',  { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t, ids}) }),
   }
 };
 
@@ -41,9 +61,11 @@ async function loadStats() {
     document.getElementById('stat-templates').textContent = d.templates;
     document.getElementById('stat-questions').textContent = d.questions;
     document.getElementById('stat-wp').textContent        = d.words_pending;
+    document.getElementById('server-status').textContent  = '🟢 온라인';
     document.getElementById('stat-qp').textContent        = d.questions_pending;
-  } catch {
-    toast('서버에 연결할 수 없습니다.', 'err');
+  } catch (e) {
+    document.getElementById('server-status').textContent = '🔴 오프라인';
+    toast(e.message, 'err');
   }
 }
 

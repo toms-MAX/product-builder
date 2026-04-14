@@ -331,9 +331,7 @@
 <script src="main.js"></script>
 <script>
   // 서버 상태 확인
-  fetch('/api/stats')
-    .then(() => document.getElementById('server-status').textContent = '🟢 온라인')
-    .catch(() => document.getElementById('server-status').textContent = '🔴 오프라인');
+  // 서버 상태는 loadStats()에서 처리
 </script>
 </body>
 </html>
