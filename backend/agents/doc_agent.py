@@ -88,30 +88,45 @@ def extract_images_from_pdf(file_path: Path, out_dir: Path) -> list[Path]:
 def parse_words_from_text(text: str) -> list[str]:
     """
     텍스트에서 영어 단어 후보 추출.
-    단어책 패턴: 줄마다 "단어 - 뜻" 또는 "단어: 뜻" 형태 가정.
+    지원 형태:
+      - "accomplish - 성취하다"
+      - "accomplish: 성취하다"
+      - "accomplish 성취하다"
+      - "1. accomplish 성취하다"
+      - "accomplish [발음] 성취하다"
+      - "accomplish"  (단독)
     """
     words = []
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
-        # "word - 뜻" 또는 "word: 뜻" 패턴
-        match = re.match(r"^([a-zA-Z][a-zA-Z\-']{1,30})\s*[-:]\s*(.+)$", line)
+        # 번호 제거: "1.", "01.", "①" 등
+        line = re.sub(r"^\d+[.)]\s*|^[①-⑳]\s*", "", line)
+
+        # 영어 단어 추출 (첫 번째 영어 토큰)
+        match = re.match(r"^([a-zA-Z][a-zA-Z\-']{1,29})", line)
         if match:
-            words.append(match.group(1).lower())
-            continue
-        # 단독 영어 단어 (2~20자)
-        match = re.match(r"^([a-zA-Z][a-zA-Z\-']{1,19})$", line)
-        if match:
-            words.append(match.group(1).lower())
+            word = match.group(1).lower()
+            # 너무 짧거나 불용어 제외
+            if len(word) >= 2 and word not in {"the", "a", "an", "is", "of", "in", "to", "it"}:
+                words.append(word)
+
     return list(dict.fromkeys(words))  # 중복 제거, 순서 유지
 
 
 def parse_meaning_from_line(line: str) -> str:
     """줄에서 한국어 뜻 추출."""
-    match = re.match(r"^[a-zA-Z\-']+\s*[-:]\s*(.+)$", line.strip())
+    line = line.strip()
+    line = re.sub(r"^\d+[.)]\s*|^[①-⑳]\s*", "", line)
+    # "word - 뜻", "word: 뜻", "word [발음] 뜻", "word 뜻" 패턴
+    match = re.match(r"^[a-zA-Z\-']+\s*(?:\[.*?\])?\s*[-:]\s*(.+)$", line)
     if match:
         return match.group(1).strip()
+    # 뒤쪽 한글 부분 추출
+    match = re.search(r"[가-힣][가-힣\s,·/()]+", line)
+    if match:
+        return match.group(0).strip()
     return ""
 
 
