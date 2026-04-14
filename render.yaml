@@ -1,9 +1,11 @@
 services:
   - type: web
-    name: qmaker-backend
+    name: product-builder
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --chdir . backend.app:app
+    startCommand: gunicorn backend.app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: PYTHONPATH
+        value: /opt/render/project/src
