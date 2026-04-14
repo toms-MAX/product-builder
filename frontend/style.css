@@ -1,1 +1,307 @@
-/* =================================\n   Ant Colony - Master Stylesheet\n   Version: 1.1.0\n   ================================= */\n\n/* --- Base & Typography --- */\nbody {\n    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;\n    margin: 0;\n    padding: 2rem;\n    background-color: #f0f2f5;\n    color: #333;\n    transition: background-color 0.3s, color 0.3s;\n}\n\nh1, h2, h3, h4, h5, h6 {\n    font-weight: 600;\n    color: #1a202c;\n}\n\ntextarea, input {\n    font-family: inherit;\n    font-size: 1rem;\n    width: 100%;\n    box-sizing: border-box;\n    padding: 10px;\n    border-radius: 5px;\n    border: 1px solid #ccc;\n}\n\n/* --- Theme Toggle --- */\n#theme-toggle {\n    position: absolute;\n    top: 20px;\n    right: 20px;\n    padding: 8px 12px;\n    background-color: #718096;\n    color: white;\n    border: none;\n    border-radius: 20px;\n    cursor: pointer;\n}\n\n/* --- Layout Containers --- */\n.main-container {\n    max-width: 1200px;\n    margin: 0 auto;\n    padding: 1rem 2rem;\n}\n\n.section-container {\n    background-color: #ffffff;\n    padding: 2rem;\n    border-radius: 8px;\n    box-shadow: 0 4px 12px rgba(0,0,0,0.08);\n    margin-bottom: 2rem;\n}\n\n.section-container h2 {\n    display: flex;\n    align-items: center;\n    gap: 10px;\n    margin-top: 0;\n    border-bottom: 2px solid #e2e8f0;\n    padding-bottom: 1rem;\n}\n\n.section-divider {\n    border: 0;\n    height: 1px;\n    background-color: #e2e8f0;\n    margin: 2rem 0;\n}\n\n/* --- Buttons --- */\n.action-btn {\n    padding: 12px 18px;\n    border: none;\n    border-radius: 6px;\n    color: white;\n    font-size: 1rem;\n    font-weight: 500;\n    cursor: pointer;\n    transition: background-color 0.2s, transform 0.1s;\n}\n\n.master-btn {\n    background-color: #e67e22; /* Orange */\n    font-weight: bold;\n    width: 100%;\n    font-size: 1.1rem;\n}\n\n#generate-btn {\n    background-color: #2980b9; /* Blue */\n    width: 100%;\n}\n\n#load-to-bank-btn {\n    width: 100%;\n    background-color: #8e44ad; /* Purple */\n}\n\n/* --- DNA EXTRACTION ENGINE --- */\n.dna-extractor-layout {\n    display: grid;\n    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));\n    gap: 2rem;\n}\n\n#image-preview-container {\n    border: 2px dashed #d1d5db;\n    border-radius: 6px;\n    background-color: #f9fafb;\n    min-height: 200px;\n    display: flex;\n    justify-content: center;\n    align-items: center;\n    padding: 1rem;\n}\n\n#image-preview {\n    max-width: 100%;\n    max-height: 100%;\n    object-fit: contain;\n}\n\n#final-dna-result {\n    height: 200px;\n    background-color: #f8f9fa;\n}\n\n/* --- PROBLEM GENERATION FACTORY --- */\n.main-layout {\n    display: grid;\n    grid-template-columns: 2fr 1fr; /* Make input section wider */\n    gap: 2rem;\n}\n\n.dna-selection-container {\n    height: 200px;\n    overflow-y: auto;\n    border: 1px solid #ddd;\n    border-radius: 5px;\n    padding: 1rem;\n    background-color: #fdfdff;\n}\n\n.dna-checkbox-item label {\n    display: flex;\n    flex-direction: column;\n    padding: 8px;\n    border-radius: 4px;\n    cursor: pointer;\n}\n.dna-checkbox-item label:hover {\n    background-color: #f0f4f8;\n}\n.dna-checkbox-item input { width: auto; margin-right: 10px; }\n\n/* --- Logs and Results --- */\n.factory-status {\n    height: 150px;\n    background-color: #2d3748; /* Darker background */\n    color: #e2e8f0;\n    padding: 1rem;\n    border-radius: 5px;\n    overflow-y: auto;\n    font-family: "SF Mono", "Fira Code", "Courier New", monospace;\n    font-size: 0.875rem;\n    line-height: 1.6;\n}\n\n#generated-questions {\n    margin-top: 2rem;\n}\n\n.question-card {\n    background-color: #f7fafc;\n    border: 1px solid #e2e8f0;\n    border-left: 4px solid #4299e1; /* Blue accent */\n    border-radius: 6px;\n    padding: 1.5rem;\n    margin-bottom: 1.5rem;\n}\n\n.passage-box {\n    background-color: #edf2f7;\n    padding: 1rem;\n    border-radius: 4px;\n    margin: 1rem 0;\n}\n\n/* --- Version Display --- */\n#version-display {\n    position: fixed;\n    bottom: 10px;\n    right: 10px;\n    background-color: rgba(0,0,0,0.6);\n    color: white;\n    padding: 5px 12px;\n    border-radius: 15px;\n    font-size: 0.75rem;\n}\n\n/* --- Dark Mode Specifics (Optional) --- */\n.dark-mode {\n    background-color: #1a202c;\n    color: #e2e8f0;\n}\n.dark-mode .section-container {\n    background-color: #2d3748;\n    border-color: #4a5568;\n}\n.dark-mode h1, .dark-mode h2, .dark-mode h3 { color: #f7fafc; }\n/* ... add more dark mode styles as needed */\n
+/* ── Reset & 변수 ───────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --primary:   #3b82f6;
+  --primary-d: #2563eb;
+  --success:   #22c55e;
+  --warning:   #f59e0b;
+  --danger:    #ef4444;
+  --gray-50:   #f9fafb;
+  --gray-100:  #f3f4f6;
+  --gray-200:  #e5e7eb;
+  --gray-300:  #d1d5db;
+  --gray-500:  #6b7280;
+  --gray-600:  #4b5563;
+  --gray-700:  #374151;
+  --gray-900:  #111827;
+  --white:     #ffffff;
+  --sidebar-w: 240px;
+  --radius:    10px;
+  --shadow:    0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", Arial, sans-serif;
+  background: var(--gray-100);
+  color: var(--gray-900);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── 레이아웃 ────────────────────────────────────────── */
+.layout { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--gray-900);
+  color: #cbd5e1;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; left: 0;
+  height: 100vh;
+  z-index: 100;
+}
+
+.sidebar-logo {
+  padding: 24px 20px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.sidebar-logo h1 { font-size: 15px; font-weight: 700; color: #fff; line-height: 1.4; }
+.sidebar-logo span { font-size: 11px; color: #64748b; margin-top: 3px; display: block; }
+
+.sidebar-nav { flex: 1; padding: 12px 0; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: #94a3b8;
+  border-left: 3px solid transparent;
+  transition: background .15s, color .15s;
+}
+.nav-item:hover { background: rgba(255,255,255,.06); color: #e2e8f0; }
+.nav-item.active {
+  background: rgba(59,130,246,.15);
+  color: #93c5fd;
+  border-left-color: var(--primary);
+}
+.nav-item .icon { font-size: 15px; width: 20px; text-align: center; }
+
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid rgba(255,255,255,.06);
+  font-size: 11px;
+  color: #334155;
+}
+
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  padding: 28px 32px;
+}
+
+/* ── 섹션 ─────────────────────────────────────────────── */
+.section { display: none; }
+.section.active { display: block; }
+
+.page-header { margin-bottom: 24px; }
+.page-header h2 { font-size: 20px; font-weight: 700; }
+.page-header p  { color: var(--gray-500); font-size: 13px; margin-top: 4px; }
+
+/* ── 카드 ─────────────────────────────────────────────── */
+.card {
+  background: var(--white);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.card-title {
+  font-size: 14px; font-weight: 700;
+  margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* ── 스탯 ─────────────────────────────────────────────── */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 18px 16px;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+.stat-val   { font-size: 30px; font-weight: 800; color: var(--primary); line-height: 1; }
+.stat-label { font-size: 11px; color: var(--gray-500); margin-top: 5px; font-weight: 600; }
+.stat-sub   { font-size: 10px; color: var(--warning); margin-top: 3px; }
+
+/* ── 폼 ───────────────────────────────────────────────── */
+.form-group { margin-bottom: 14px; }
+.form-group label {
+  display: block; font-size: 12.5px; font-weight: 600;
+  color: var(--gray-700); margin-bottom: 5px;
+}
+.form-group input,
+.form-group select {
+  width: 100%; padding: 8px 11px;
+  border: 1px solid var(--gray-300);
+  border-radius: 6px; font-size: 13.5px;
+  background: var(--white); color: var(--gray-900);
+  transition: border-color .15s, box-shadow .15s;
+}
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+}
+.form-row   { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+/* ── 버튼 ─────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border: none;
+  border-radius: 6px; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-d); }
+.btn-success { background: var(--success); color: #fff; }
+.btn-success:hover { background: #16a34a; }
+.btn-danger  { background: var(--danger);  color: #fff; }
+.btn-danger:hover  { background: #dc2626; }
+.btn-ghost {
+  background: var(--gray-100); color: var(--gray-700);
+  border: 1px solid var(--gray-200);
+}
+.btn-ghost:hover { background: var(--gray-200); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-sm { padding: 5px 11px; font-size: 12px; }
+.btn-block { width: 100%; justify-content: center; }
+
+/* ── 드롭존 ───────────────────────────────────────────── */
+.dropzone {
+  border: 2px dashed var(--gray-300);
+  border-radius: var(--radius);
+  padding: 36px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all .2s;
+  background: var(--gray-50);
+}
+.dropzone:hover, .dropzone.drag-over {
+  border-color: var(--primary);
+  background: rgba(59,130,246,.03);
+}
+.dropzone .dz-icon { font-size: 32px; margin-bottom: 8px; }
+.dropzone .dz-hint { color: var(--gray-500); font-size: 13px; }
+.dropzone .dz-hint strong { color: var(--primary); }
+.dropzone .dz-file { margin-top: 8px; font-size: 13px; color: var(--gray-700); font-weight: 600; }
+#doc-file-input { display: none; }
+
+/* ── 프로그레스 ───────────────────────────────────────── */
+.progress-wrap { margin: 12px 0; }
+.progress-bar  { height: 5px; background: var(--gray-200); border-radius: 99px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--primary); border-radius: 99px; transition: width .3s; width: 0; }
+.progress-text { font-size: 11px; color: var(--gray-500); margin-top: 5px; }
+
+/* ── 결과 박스 ────────────────────────────────────────── */
+.result-box {
+  padding: 14px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin-top: 14px;
+}
+.result-success { background: #f0fdf4; border-left: 4px solid var(--success); color: #166534; }
+.result-error   { background: #fef2f2; border-left: 4px solid var(--danger);  color: #991b1b; }
+
+/* ── 문제 카드 ────────────────────────────────────────── */
+.q-list { display: flex; flex-direction: column; gap: 10px; }
+.q-card {
+  border: 1.5px solid var(--gray-200);
+  border-radius: 8px; padding: 14px 16px;
+  background: var(--white);
+  transition: border-color .15s;
+  cursor: pointer;
+}
+.q-card:hover  { border-color: var(--gray-300); }
+.q-card.selected { border-color: var(--primary); background: #eff6ff; }
+.q-card-top {
+  display: flex; align-items: center;
+  justify-content: space-between; margin-bottom: 6px;
+}
+.q-badge {
+  font-size: 10px; font-weight: 700;
+  padding: 2px 7px; border-radius: 99px;
+  background: var(--gray-100); color: var(--gray-600);
+}
+.q-badge.fib  { background: #dbeafe; color: #1d4ed8; }
+.q-badge.err  { background: #fce7f3; color: #9d174d; }
+.q-badge.sa   { background: #d1fae5; color: #065f46; }
+.q-stem { font-size: 13.5px; font-weight: 600; margin-bottom: 6px; }
+.q-choices { display: flex; flex-wrap: wrap; gap: 5px; }
+.q-choice {
+  font-size: 11.5px; padding: 2px 9px;
+  border-radius: 99px;
+  background: var(--gray-100); color: var(--gray-600);
+}
+.q-choice.correct { background: #d1fae5; color: #065f46; font-weight: 700; }
+.q-meta { font-size: 11px; color: var(--gray-400); margin-top: 6px; }
+.q-check { accent-color: var(--primary); width: 15px; height: 15px; cursor: pointer; }
+
+/* ── 빌드 선택바 ──────────────────────────────────────── */
+.select-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 14px;
+  background: var(--gray-50); border-radius: 7px;
+  margin-bottom: 12px; font-size: 13px; color: var(--gray-600);
+}
+
+/* ── 검수 테이블 ──────────────────────────────────────── */
+.table-wrap { overflow-x: auto; }
+.rtable { width: 100%; border-collapse: collapse; }
+.rtable th {
+  text-align: left; padding: 9px 12px;
+  background: var(--gray-50); font-size: 11px; font-weight: 700;
+  color: var(--gray-500); text-transform: uppercase;
+  border-bottom: 1px solid var(--gray-200);
+}
+.rtable td {
+  padding: 9px 12px; border-bottom: 1px solid var(--gray-100);
+  font-size: 13px; vertical-align: middle;
+}
+.rtable tr:hover td { background: var(--gray-50); }
+.score-badge {
+  font-size: 10.5px; font-weight: 700;
+  padding: 2px 7px; border-radius: 99px;
+}
+.s-urgent { background: #fee2e2; color: #b91c1c; }
+.s-normal { background: #fef9c3; color: #92400e; }
+.s-good   { background: #d1fae5; color: #065f46; }
+
+/* ── 탭 ───────────────────────────────────────────────── */
+.tabs { display: flex; border-bottom: 1px solid var(--gray-200); margin-bottom: 18px; }
+.tab {
+  padding: 9px 16px; font-size: 13px; font-weight: 600;
+  cursor: pointer; color: var(--gray-500);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: all .15s;
+}
+.tab:hover { color: var(--gray-900); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+/* ── 토스트 ───────────────────────────────────────────── */
+#toast-wrap {
+  position: fixed; bottom: 20px; right: 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 9999;
+}
+.toast {
+  padding: 11px 16px; border-radius: 8px;
+  font-size: 13px; font-weight: 500;
+  box-shadow: var(--shadow-md);
+  animation: toastIn .2s ease;
+  min-width: 260px; max-width: 320px;
+}
+.toast-ok  { background: #f0fdf4; color: #166534; border-left: 4px solid var(--success); }
+.toast-err { background: #fef2f2; color: #991b1b; border-left: 4px solid var(--danger); }
+.toast-inf { background: #eff6ff; color: #1e40af; border-left: 4px solid var(--primary); }
+
+@keyframes toastIn {
+  from { opacity:0; transform: translateX(16px); }
+  to   { opacity:1; transform: translateX(0); }
+}
+
+/* ── 빈 상태 ──────────────────────────────────────────── */
+.empty { text-align: center; padding: 40px 20px; color: var(--gray-400); }
+.empty .e-icon { font-size: 36px; margin-bottom: 10px; }
+.empty p { font-size: 13px; }
