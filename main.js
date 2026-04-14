@@ -1,5 +1,7 @@
 /* ── API 기본 설정 ──────────────────────────────────── */
 
+const API_BASE = 'https://product-builder.onrender.com';
+
 // 안전한 fetch: 응답이 JSON이 아니거나 서버 없을 때 에러 객체 반환
 async function safeFetch(url, options = {}) {
   try {
@@ -20,16 +22,16 @@ async function safeFetch(url, options = {}) {
 }
 
 const API = {
-  stats:          () => safeFetch('/api/stats'),
-  docIn:    (fd)  => safeFetch('/api/doc-in',  { method:'POST', body: fd }),
-  gen:      (d)   => safeFetch('/api/gen',     { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(d) }),
-  build:    (d)   => safeFetch('/api/build',   { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(d) }),
-  download: (fn)  => window.open(`/api/build/download/${fn}`),
+  stats:          () => safeFetch(`${API_BASE}/api/stats`),
+  docIn:    (fd)  => safeFetch(`${API_BASE}/api/doc-in`,  { method:'POST', body: fd }),
+  gen:      (d)   => safeFetch(`${API_BASE}/api/gen`,     { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(d) }),
+  build:    (d)   => safeFetch(`${API_BASE}/api/build`,   { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(d) }),
+  download: (fn)  => window.open(`${API_BASE}/api/build/download/${fn}`),
   review: {
-    report:  ()        => safeFetch('/api/review/report'),
-    list:    (t,lim)   => safeFetch(`/api/review/list/${t}?limit=${lim||50}`),
-    approve: (t, ids)  => safeFetch('/api/review/approve', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t, ids}) }),
-    reject:  (t, ids)  => safeFetch('/api/review/reject',  { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t, ids}) }),
+    report:  ()        => safeFetch(`${API_BASE}/api/review/report`),
+    list:    (t,lim)   => safeFetch(`${API_BASE}/api/review/list/${t}?limit=${lim||50}`),
+    approve: (t, ids)  => safeFetch(`${API_BASE}/api/review/approve`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t, ids}) }),
+    reject:  (t, ids)  => safeFetch(`${API_BASE}/api/review/reject`,  { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t, ids}) }),
   }
 };
 
