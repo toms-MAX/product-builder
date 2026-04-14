@@ -17,6 +17,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from flask import Flask, jsonify, request, send_from_directory, send_file
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 from backend.agents.doc_agent    import DocAgent
@@ -35,6 +36,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 ensure_db(DB_PATH)
 
 app = Flask(__name__, static_folder=str(FRONTEND))
+CORS(app)
 
 ALLOWED_EXT = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".txt"}
 
