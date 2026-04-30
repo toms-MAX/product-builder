@@ -193,7 +193,27 @@
         <div class="form-row-3">
           <div class="form-group">
             <label>문법 포인트</label>
-            <input type="text" id="gen-grammar" placeholder="예: 현재완료, 수동태, 관계사">
+            <select id="gen-grammar">
+              <option value="현재완료">현재완료</option>
+              <option value="수동태">수동태</option>
+              <option value="관계사">관계사</option>
+              <option value="가정법과거">가정법과거</option>
+              <option value="가정법과거완료">가정법과거완료</option>
+              <option value="to부정사">to부정사</option>
+              <option value="동명사">동명사</option>
+              <option value="분사">분사</option>
+              <option value="비교급">비교급</option>
+              <option value="최상급">최상급</option>
+              <option value="원급비교">원급비교</option>
+              <option value="조동사">조동사</option>
+              <option value="접속사">접속사</option>
+              <option value="미래시제">미래시제</option>
+              <option value="현재진행">현재진행</option>
+              <option value="과거시제">과거시제</option>
+              <option value="과거진행">과거진행</option>
+              <option value="간접의문문">간접의문문</option>
+              <option value="어휘_형용사">어휘 (형용사)</option>
+            </select>
           </div>
           <div class="form-group">
             <label>레벨</label>
@@ -206,8 +226,8 @@
           <div class="form-group">
             <label>생성 개수</label>
             <select id="gen-count">
-              <option>3</option><option selected>5</option>
-              <option>10</option><option>20</option>
+              <option>5</option><option>10</option>
+              <option>15</option><option>20</option>
             </select>
           </div>
         </div>

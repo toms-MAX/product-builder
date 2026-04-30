@@ -189,10 +189,10 @@ async function submitDocIn() {
 let genResults = [];
 
 async function submitGen() {
-  const grammar = document.getElementById('gen-grammar').value.trim();
+  const grammar = document.getElementById('gen-grammar').value;
   const level   = document.getElementById('gen-level').value;
   const count   = parseInt(document.getElementById('gen-count').value) || 5;
-  if (!grammar) { toast('문법 포인트를 입력해주세요.', 'err'); return; }
+  if (!grammar) { toast('문법 포인트를 선택해주세요.', 'err'); return; }
 
   const btn = document.getElementById('gen-btn');
   btn.disabled = true;

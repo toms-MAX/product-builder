@@ -64,6 +64,10 @@ def _db_stats():
 def index():
     return send_from_directory(FRONTEND, "index.html")
 
+@app.route("/admin")
+def admin():
+    return send_from_directory(FRONTEND, "admin.html")
+
 @app.route("/<path:path>")
 def static_files(path):
     return send_from_directory(FRONTEND, path)
