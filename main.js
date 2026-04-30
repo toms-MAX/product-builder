@@ -32,7 +32,11 @@ const API = {
     list:    (t,lim)   => safeFetch(`${API_BASE}/api/review/list/${t}?limit=${lim||50}`),
     approve: (t, ids)  => safeFetch(`${API_BASE}/api/review/approve`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t, ids}) }),
     reject:  (t, ids)  => safeFetch(`${API_BASE}/api/review/reject`,  { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table:t, ids}) }),
-  }
+  },
+  wordUpdate: (id, fields) => safeFetch(`${API_BASE}/api/words/${id}`, {
+    method: 'PATCH', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(fields),
+  }),
 };
 
 /* ── 토스트 ──────────────────────────────────────────── */
@@ -52,7 +56,7 @@ function nav(id) {
   document.getElementById('sec-' + id).classList.add('active');
   document.querySelector(`.nav-item[data-nav="${id}"]`).classList.add('active');
   if (id === 'dashboard') loadStats();
-  if (id === 'review')    loadReview('words');
+  if (id === 'review')    { reviewOffset = 0; loadReview(); }
 }
 
 /* ── 대시보드 ────────────────────────────────────────── */
@@ -317,85 +321,222 @@ async function submitBuild() {
 }
 
 /* ── REVIEW ──────────────────────────────────────────── */
-let reviewTable = 'words';
-let reviewItems = [];
+let reviewTable  = 'words';
+let reviewItems  = [];
+let reviewOffset = 0;
+let reviewTotal  = 0;
+let reviewHasMore = false;
 
-async function loadReview(table) {
-  reviewTable = table;
-  document.querySelectorAll('.rev-tab').forEach(t => t.classList.toggle('active', t.dataset.table === table));
+const POS_LABEL = { noun: '명사', verb: '동사', adjective: '형용사', adverb: '부사' };
+const LEVELS    = ['중1','중2','중3','고1','고2','고3','수능','수능고급'];
+
+function switchRevTab(table) {
+  reviewTable  = table;
+  reviewOffset = 0;
+  document.querySelectorAll('.rev-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.table === table));
+  // 문제탭에서는 품사 필터 숨김
+  document.getElementById('rev-pos-wrap').style.display =
+    table === 'words' ? '' : 'none';
+  applyRevFilter();
+}
+
+async function applyRevFilter() {
+  reviewOffset = 0;
+  await loadReview();
+}
+
+async function loadReview() {
   document.getElementById('review-list').innerHTML =
     '<div class="empty"><div class="e-icon">⏳</div><p>불러오는 중...</p></div>';
 
-  try {
-    const d = await API.review.list(table, 50);
-    reviewItems = d.items || [];
-    renderReview(reviewItems, table);
+  const level    = document.getElementById('rev-filter-level').value;
+  const pos      = document.getElementById('rev-filter-pos').value;
+  const verified = document.getElementById('rev-filter-verified').value;
+  const limit    = parseInt(document.getElementById('rev-filter-limit').value) || 50;
 
+  const params = new URLSearchParams({ limit, offset: reviewOffset });
+  if (level)              params.set('level', level);
+  if (pos)                params.set('pos', pos);
+  if (verified !== '')    params.set('verified', verified);
+
+  try {
+    const d = await safeFetch(`${API_BASE}/api/review/list/${reviewTable}?${params}`);
+    reviewItems  = d.items  || [];
+    reviewTotal  = d.total  ?? 0;
+    reviewHasMore = d.has_more ?? false;
+    renderReview(reviewItems, reviewTable);
+    updateRevPagination(limit);
+
+    // 현황 숫자는 report API (필터 무관한 전체 통계)
     const rep = await API.review.report();
-    const s   = rep[table] || {};
-    document.getElementById('rev-total').textContent   = s.total   ?? '-';
-    document.getElementById('rev-pending').textContent = s.pending  ?? '-';
-    document.getElementById('rev-approved').textContent= s.approved ?? '-';
-    if (table === 'questions') {
-      document.getElementById('rev-score-wrap').style.display = 'block';
-      document.getElementById('rev-urgent').textContent = s.urgent ?? 0;
-      document.getElementById('rev-normal').textContent = s.normal ?? 0;
-      document.getElementById('rev-good').textContent   = s.good   ?? 0;
-    } else {
-      document.getElementById('rev-score-wrap').style.display = 'none';
-    }
+    const s   = rep[reviewTable] || {};
+    document.getElementById('rev-total').textContent    = reviewTotal;
+    document.getElementById('rev-pending').textContent  = s.pending  ?? '-';
+    document.getElementById('rev-approved').textContent = s.approved ?? '-';
+    updateSelCount();
   } catch (e) {
-    toast('검수 데이터 로드 실패', 'err');
+    toast('검수 데이터 로드 실패: ' + e.message, 'err');
   }
+}
+
+function updateRevPagination(limit) {
+  const pg   = document.getElementById('rev-pagination');
+  const info = document.getElementById('rev-page-info');
+  const prev = document.getElementById('rev-prev');
+  const next = document.getElementById('rev-next');
+
+  const pageNum = Math.floor(reviewOffset / limit) + 1;
+  const total   = Math.ceil(reviewTotal / limit);
+  info.textContent = `${pageNum} / ${total} 페이지 (총 ${reviewTotal}개)`;
+  prev.disabled = reviewOffset === 0;
+  next.disabled = !reviewHasMore;
+  pg.style.display = reviewTotal > limit ? 'flex' : 'none';
+}
+
+function revPage(dir) {
+  const limit = parseInt(document.getElementById('rev-filter-limit').value) || 50;
+  reviewOffset = Math.max(0, reviewOffset + dir * limit);
+  loadReview();
 }
 
 function renderReview(items, table) {
   const wrap = document.getElementById('review-list');
   if (!items.length) {
-    wrap.innerHTML = '<div class="empty"><div class="e-icon">🎉</div><p>검수 대기 항목이 없습니다!</p></div>';
+    wrap.innerHTML = '<div class="empty"><div class="e-icon">🎉</div><p>조건에 맞는 항목이 없습니다.</p></div>';
     return;
   }
 
   const isQ = table === 'questions';
-  const rows = items.map(r => {
-    const id = r.id;
-    const scoreVal = r.quality_score;
-    const scoreClass = scoreVal <= 5 ? 's-urgent' : scoreVal <= 7 ? 's-normal' : 's-good';
-    const scoreBadge = isQ
-      ? `<span class="score-badge ${scoreClass}">${scoreVal}점</span>` : '';
-
-    if (isQ) {
-      return `<tr>
-        <td><input type="checkbox" class="rev-chk" data-id="${id}" style="accent-color:var(--primary)"></td>
-        <td><span class="q-badge fib">${r.q_type || ''}</span></td>
-        <td style="max-width:300px;">${r.stem}</td>
-        <td>${r.answer || ''}</td>
-        <td>${r.level || ''}</td>
-        <td>${scoreBadge}</td>
-      </tr>`;
-    } else {
-      return `<tr>
-        <td><input type="checkbox" class="rev-chk" data-id="${id}" style="accent-color:var(--primary)"></td>
-        <td><strong>${r.word}</strong></td>
-        <td>${r.pos || ''}</td>
-        <td>${r.level || ''}</td>
-        <td>${r.meaning_ko || ''}</td>
-        <td>${r.source_book || ''}</td>
-      </tr>`;
-    }
-  }).join('');
+  const rows = items.map(r => buildRevRow(r, isQ)).join('');
 
   const head = isQ
-    ? `<tr><th></th><th>유형</th><th>문제</th><th>정답</th><th>레벨</th><th>점수</th></tr>`
-    : `<tr><th></th><th>단어</th><th>품사</th><th>레벨</th><th>뜻</th><th>출처</th></tr>`;
+    ? `<tr><th style="width:32px"></th><th>유형</th><th>레벨</th><th style="min-width:260px">문제</th><th>정답</th><th>점수</th><th style="width:50px"></th></tr>`
+    : `<tr><th style="width:32px"></th><th style="min-width:90px">단어</th><th>품사</th><th>레벨</th><th style="min-width:120px">뜻</th><th>출처</th><th style="width:50px"></th></tr>`;
 
   wrap.innerHTML = `
     <div class="table-wrap">
       <table class="rtable">
         <thead>${head}</thead>
-        <tbody>${rows}</tbody>
+        <tbody id="rev-tbody">${rows}</tbody>
       </table>
     </div>`;
+
+  // 체크박스 변경 시 선택 수 갱신
+  wrap.querySelectorAll('.rev-chk').forEach(c =>
+    c.addEventListener('change', updateSelCount));
+}
+
+function buildRevRow(r, isQ) {
+  const id = r.id;
+  if (isQ) {
+    const sc = r.quality_score;
+    const scClass = sc <= 5 ? 's-urgent' : sc <= 7 ? 's-normal' : 's-good';
+    return `<tr data-id="${id}">
+      <td><input type="checkbox" class="rev-chk" data-id="${id}" style="accent-color:var(--primary)"></td>
+      <td><span class="q-badge fib">${r.q_type || ''}</span></td>
+      <td><span class="lv-badge">${r.level || ''}</span></td>
+      <td style="max-width:300px;font-size:13px;">${r.stem}</td>
+      <td style="font-size:13px;">${r.answer || ''}</td>
+      <td><span class="score-badge ${scClass}">${sc}점</span></td>
+      <td></td>
+    </tr>`;
+  } else {
+    const verIcon = r.verified ? '<span style="color:var(--success);font-size:11px;">완료</span>'
+                               : '<span style="color:var(--warning);font-size:11px;">대기</span>';
+    return `
+    <tr data-id="${id}" class="rev-word-row">
+      <td><input type="checkbox" class="rev-chk" data-id="${id}" style="accent-color:var(--primary)"></td>
+      <td><strong>${r.word}</strong></td>
+      <td><span class="pos-badge">${POS_LABEL[r.pos] || r.pos || '-'}</span></td>
+      <td><span class="lv-badge">${r.level || '-'}</span></td>
+      <td style="font-size:13px;">${r.meaning_ko || ''}</td>
+      <td style="font-size:11px;color:var(--gray-400);">${r.source_book || ''}</td>
+      <td><button class="btn btn-ghost btn-xs" onclick="openWordEdit('${id}','${r.word}','${r.pos||'noun'}','${r.level||'고1'}',\`${(r.meaning_ko||'').replace(/`/g,"'")}\`,'${r.category||''}')">편집</button></td>
+    </tr>
+    <tr id="edit-row-${id}" class="edit-expanded" style="display:none;">
+      <td colspan="7">
+        <div class="inline-edit">
+          <div class="edit-fields">
+            <div class="edit-field">
+              <label>레벨</label>
+              <select id="ef-level-${id}">${LEVELS.map(l=>`<option>${l}</option>`).join('')}</select>
+            </div>
+            <div class="edit-field">
+              <label>품사</label>
+              <select id="ef-pos-${id}">
+                <option value="noun">명사</option>
+                <option value="verb">동사</option>
+                <option value="adjective">형용사</option>
+                <option value="adverb">부사</option>
+              </select>
+            </div>
+            <div class="edit-field" style="flex:2">
+              <label>뜻 (한국어)</label>
+              <input type="text" id="ef-meaning-${id}" style="width:100%">
+            </div>
+            <div class="edit-field">
+              <label>카테고리</label>
+              <select id="ef-cat-${id}">
+                <option value="">-</option>
+                <option>사람/직업</option><option>사물</option><option>장소</option>
+                <option>행동</option><option>감정</option><option>추상개념</option>
+                <option>음식</option><option>동물</option><option>자연</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <button class="btn btn-primary btn-sm" onclick="saveWordEdit('${id}')">저장</button>
+            <button class="btn btn-ghost btn-sm"   onclick="closeWordEdit('${id}')">취소</button>
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  }
+}
+
+function openWordEdit(id, word, pos, level, meaning, category) {
+  // 이미 열려있으면 닫기
+  const editRow = document.getElementById(`edit-row-${id}`);
+  if (editRow.style.display !== 'none') { closeWordEdit(id); return; }
+
+  document.getElementById(`ef-level-${id}`).value   = level;
+  document.getElementById(`ef-pos-${id}`).value     = pos;
+  document.getElementById(`ef-meaning-${id}`).value = meaning;
+  document.getElementById(`ef-cat-${id}`).value     = category;
+  editRow.style.display = '';
+}
+
+function closeWordEdit(id) {
+  const row = document.getElementById(`edit-row-${id}`);
+  if (row) row.style.display = 'none';
+}
+
+async function saveWordEdit(id) {
+  const fields = {
+    level:      document.getElementById(`ef-level-${id}`).value,
+    pos:        document.getElementById(`ef-pos-${id}`).value,
+    meaning_ko: document.getElementById(`ef-meaning-${id}`).value.trim(),
+    category:   document.getElementById(`ef-cat-${id}`).value || null,
+  };
+  try {
+    const d = await safeFetch(`${API_BASE}/api/words/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    if (d.error) { toast(d.error, 'err'); return; }
+    toast('저장 완료', 'ok');
+    closeWordEdit(id);
+    loadReview();  // 목록 새로고침
+  } catch (e) {
+    toast('저장 실패: ' + e.message, 'err');
+  }
+}
+
+function updateSelCount() {
+  const n = document.querySelectorAll('.rev-chk:checked').length;
+  document.getElementById('rev-sel-count').textContent = `${n}개 선택`;
 }
 
 function getCheckedIds() {
@@ -408,7 +549,7 @@ async function doApprove() {
   const d = await API.review.approve(reviewTable, ids);
   toast(`${d.updated}개 승인 완료`, 'ok');
   updateStatBadges(d.db);
-  loadReview(reviewTable);
+  loadReview();
 }
 
 async function doReject() {
@@ -418,11 +559,29 @@ async function doReject() {
   const d = await API.review.reject(reviewTable, ids);
   toast(`${d.deleted}개 삭제 완료`, 'err');
   updateStatBadges(d.db);
-  loadReview(reviewTable);
+  loadReview();
+}
+
+async function doBulkLevel() {
+  const ids   = getCheckedIds();
+  const level = document.getElementById('rev-bulk-level').value;
+  if (!ids.length) { toast('항목을 선택해주세요.', 'err'); return; }
+  if (!level)      { toast('레벨을 선택해주세요.', 'err'); return; }
+  const d = await safeFetch(`${API_BASE}/api/review/bulk-level`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ table: reviewTable, ids, level }),
+  });
+  if (d.error) { toast(d.error, 'err'); return; }
+  toast(`${d.updated}개 → ${level} 변경 완료`, 'ok');
+  document.getElementById('rev-bulk-level').value = '';
+  updateStatBadges(d.db);
+  loadReview();
 }
 
 function selectAllReview(val) {
-  document.querySelectorAll('.rev-chk').forEach(c => c.checked = val);
+  document.querySelectorAll('.rev-chk').forEach(c => { c.checked = val; });
+  updateSelCount();
 }
 
 /* ── 공통 헬퍼 ───────────────────────────────────────── */

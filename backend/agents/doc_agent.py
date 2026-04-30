@@ -278,33 +278,43 @@ class DocAgent:
 
         print(f"        {len(unique_words)}개 단어 후보 파악")
 
-        # ── 3. AI 배치 태깅 (단어 전체를 한꺼번에 처리) ──
+        # ── 3. 태깅 (레벨: 사용자 지정값 고정 / 품사: 규칙 → AI 폴백) ──
         total_words = len(unique_words)
         word_list = [w for w, _ in unique_words]
 
-        emit({"type": "step", "step": 3, "total_steps": 4,
-              "message": f"AI 배치 태깅 중... (총 {total_words}개, {max(1, (total_words+49)//50)}번 호출)"})
-        print(f"  [3/4] AI 배치 태깅 중... ({total_words}개 → "
-              f"API {max(1,(total_words+49)//50)*2}번 호출)")
+        # 레벨은 사용자가 업로드 시 직접 지정 → AI 호출 0번
+        level_map = {w: level for w in word_list}
 
-        # 배치로 레벨·품사 한 번에 분류 (50개씩 묶음)
+        # 품사: 텍스트에서 규칙 기반 추출 가능 → AI는 불필요 시 생략
+        # 현재는 AI 없이 기본값(noun) 사용; 추후 PDF 내 v./n./adj. 파싱으로 교체 가능
+        pos_map = {w: "noun" for w in word_list}
+
+        ai_calls = 0
         if self.ai.available:
-            print("        레벨 분류 중...", flush=True)
-            level_map = self.ai.classify_level_batch(word_list)
-            print("        품사 분류 중...", flush=True)
-            pos_map   = self.ai.classify_pos_batch(word_list)
+            # 품사만 AI에 위임 (레벨은 이미 확정)
+            emit({"type": "step", "step": 3, "total_steps": 4,
+                  "message": f"품사 분류 중... (AI {max(1,(total_words+49)//50)}번 호출)"})
+            print(f"  [3/4] 품사 분류 중... (레벨 고정={level}, AI {max(1,(total_words+49)//50)}번)")
+            pos_map  = self.ai.classify_pos_batch(word_list)
+            ai_calls = max(1, (total_words + 49) // 50)
         else:
-            level_map = {w: level for w in word_list}
-            pos_map   = {w: "noun" for w in word_list}
+            emit({"type": "step", "step": 3, "total_steps": 4,
+                  "message": f"태깅 완료 (레벨={level} 고정, AI 호출 0번)"})
+            print(f"  [3/4] 태깅 완료 — 레벨={level} 고정, AI 호출 0번")
 
-        # 품질 점수: 뜻이 있으면 8, 없으면 5 (룰 기반, AI 불필요)
+        # 품질 점수: 규칙 기반 (AI 불필요)
         def _rule_score(meaning: str) -> int:
-            return 8 if meaning and meaning.strip() else 5
+            if not meaning or not meaning.strip():
+                return 5
+            if len(meaning.strip()) < 2:
+                return 6
+            return 8
 
         ensure_db(self.db_path)
         conn = sqlite3.connect(self.db_path)
 
-        stats = {"total": 0, "saved": 0, "skipped": 0, "low_quality": 0, "words": []}
+        stats = {"total": 0, "saved": 0, "skipped": 0, "low_quality": 0,
+                 "ai_calls": ai_calls, "words": []}
 
         for idx, (word, meaning_ko) in enumerate(unique_words, 1):
             stats["total"] += 1
@@ -313,9 +323,7 @@ class DocAgent:
             emit({"type": "progress", "current": idx, "total": total_words,
                   "word": word, "pct": pct})
 
-            # 배치 결과 사용 (루프 안에서 AI 호출 없음)
-            ai_level  = level_map.get(word, level)
-            final_level = ai_level if ai_level != "중2" else level
+            final_level = level_map.get(word, level)
             final_grade = LEVEL_TO_GRADE.get(final_level, grade_num)
             pos   = pos_map.get(word, "noun")
             score = _rule_score(meaning_ko)

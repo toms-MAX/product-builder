@@ -248,10 +248,44 @@ def api_review_report():
 def api_review_list(table):
     if table not in ("words", "questions"):
         return jsonify({"error": "잘못된 테이블"}), 400
-    limit = int(request.args.get("limit", 50))
+    limit    = min(int(request.args.get("limit",  50)), 200)
+    offset   = int(request.args.get("offset", 0))
+    level    = request.args.get("level")  or None
+    pos      = request.args.get("pos")    or None
+    verified = request.args.get("verified")
+    verified_int = int(verified) if verified is not None else 0
+
+    agent  = ReviewAgent(db_path=DB_PATH)
+    result = agent.list_filtered(
+        table, level=level, pos=pos,
+        verified=verified_int, limit=limit, offset=offset,
+    )
+    return jsonify(result)
+
+
+@app.route("/api/words/<word_id>", methods=["PATCH"])
+def api_word_update(word_id):
+    """단어 개별 필드 수정."""
+    data = request.json or {}
     agent = ReviewAgent(db_path=DB_PATH)
-    rows  = agent.list_pending(table, limit=limit)
-    return jsonify({"items": rows})
+    ok    = agent.update_word(word_id, data)
+    if not ok:
+        return jsonify({"error": "수정할 필드가 없거나 단어를 찾을 수 없습니다."}), 400
+    return jsonify({"success": True, "db": _db_stats()})
+
+
+@app.route("/api/review/bulk-level", methods=["POST"])
+def api_bulk_level():
+    """선택 항목 레벨 일괄 변경."""
+    data  = request.json or {}
+    table = data.get("table", "words")
+    ids   = data.get("ids", [])
+    level = data.get("level", "")
+    if not ids or not level:
+        return jsonify({"error": "ids와 level이 필요합니다."}), 400
+    agent = ReviewAgent(db_path=DB_PATH)
+    count = agent.bulk_update_level(table, ids, level)
+    return jsonify({"success": True, "updated": count, "db": _db_stats()})
 
 
 @app.route("/api/review/approve", methods=["POST"])

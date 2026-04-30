@@ -274,50 +274,102 @@
     <!-- REVIEW -->
     <div id="sec-review" class="section">
       <div class="page-header">
-        <h2>✅ 검수하기</h2>
+        <h2>검수하기</h2>
         <p>DB에 저장된 단어와 문제를 검토해 승인하거나 삭제합니다.</p>
       </div>
 
       <!-- 현황 카드 -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr) auto;gap:14px;margin-bottom:20px;">
+      <div class="rev-stat-row">
         <div class="stat-card">
           <div class="stat-val" id="rev-total">-</div>
-          <div class="stat-label">전체</div>
+          <div class="stat-label">필터 결과</div>
         </div>
         <div class="stat-card">
           <div class="stat-val" style="color:var(--warning);" id="rev-pending">-</div>
-          <div class="stat-label">검수 대기</div>
+          <div class="stat-label">검수 대기 (전체)</div>
         </div>
         <div class="stat-card">
           <div class="stat-val" style="color:var(--success);" id="rev-approved">-</div>
-          <div class="stat-label">검수 완료</div>
-        </div>
-        <div class="stat-card" id="rev-score-wrap" style="display:none;">
-          <div style="font-size:12px;display:flex;flex-direction:column;gap:4px;text-align:left;">
-            <span>🔴 긴급: <strong id="rev-urgent">-</strong>개</span>
-            <span>🟡 보통: <strong id="rev-normal">-</strong>개</span>
-            <span>🟢 양호: <strong id="rev-good">-</strong>개</span>
-          </div>
+          <div class="stat-label">검수 완료 (전체)</div>
         </div>
       </div>
 
       <div class="card">
         <!-- 탭 -->
-        <div class="tabs">
-          <div class="tab rev-tab active" data-table="words" onclick="loadReview('words')">단어</div>
-          <div class="tab rev-tab" data-table="questions" onclick="loadReview('questions')">문제</div>
+        <div class="tabs" style="margin-bottom:12px;">
+          <div class="tab rev-tab active" data-table="words"     onclick="switchRevTab('words')">단어</div>
+          <div class="tab rev-tab"        data-table="questions" onclick="switchRevTab('questions')">문제</div>
         </div>
 
-        <!-- 액션 버튼 -->
-        <div style="display:flex;gap:8px;margin-bottom:14px;">
-          <button class="btn btn-ghost btn-sm" onclick="selectAllReview(true)">전체선택</button>
-          <button class="btn btn-ghost btn-sm" onclick="selectAllReview(false)">선택해제</button>
-          <button class="btn btn-success btn-sm" onclick="doApprove()">✅ 선택 승인</button>
-          <button class="btn btn-danger btn-sm"  onclick="doReject()">🗑 선택 삭제</button>
+        <!-- 필터 바 -->
+        <div class="rev-filter-bar">
+          <div class="filter-group">
+            <label>레벨</label>
+            <select id="rev-filter-level" onchange="applyRevFilter()">
+              <option value="">전체</option>
+              <option>중1</option><option>중2</option><option>중3</option>
+              <option>고1</option><option>고2</option><option>고3</option>
+              <option>수능</option><option>수능고급</option>
+            </select>
+          </div>
+          <div class="filter-group" id="rev-pos-wrap">
+            <label>품사</label>
+            <select id="rev-filter-pos" onchange="applyRevFilter()">
+              <option value="">전체</option>
+              <option value="noun">명사</option>
+              <option value="verb">동사</option>
+              <option value="adjective">형용사</option>
+              <option value="adverb">부사</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>상태</label>
+            <select id="rev-filter-verified" onchange="applyRevFilter()">
+              <option value="0">대기중만</option>
+              <option value="">전체</option>
+              <option value="1">완료만</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>개수</label>
+            <select id="rev-filter-limit" onchange="applyRevFilter()">
+              <option value="50">50개</option>
+              <option value="100">100개</option>
+              <option value="200">200개</option>
+            </select>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="applyRevFilter()">새로고침</button>
+        </div>
+
+        <!-- 액션 바 -->
+        <div class="rev-action-bar">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <button class="btn btn-ghost btn-sm" onclick="selectAllReview(true)">전체선택</button>
+            <button class="btn btn-ghost btn-sm" onclick="selectAllReview(false)">선택해제</button>
+            <span class="rev-sel-count" id="rev-sel-count">0개 선택</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <select id="rev-bulk-level" class="rev-level-sel">
+              <option value="">레벨 변경...</option>
+              <option>중1</option><option>중2</option><option>중3</option>
+              <option>고1</option><option>고2</option><option>고3</option>
+              <option>수능</option><option>수능고급</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="doBulkLevel()">적용</button>
+            <button class="btn btn-success btn-sm" onclick="doApprove()">승인</button>
+            <button class="btn btn-danger btn-sm"  onclick="doReject()">삭제</button>
+          </div>
         </div>
 
         <div id="review-list">
           <div class="empty"><div class="e-icon">⏳</div><p>불러오는 중...</p></div>
+        </div>
+
+        <!-- 페이지네이션 -->
+        <div id="rev-pagination" style="display:none;text-align:center;padding:14px 0;gap:8px;display:flex;justify-content:center;align-items:center;">
+          <button class="btn btn-ghost btn-sm" id="rev-prev" onclick="revPage(-1)">이전</button>
+          <span id="rev-page-info" style="font-size:13px;color:var(--gray-500)"></span>
+          <button class="btn btn-ghost btn-sm" id="rev-next" onclick="revPage(1)">다음</button>
         </div>
       </div>
     </div>

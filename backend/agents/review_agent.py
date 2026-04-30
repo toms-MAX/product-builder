@@ -86,42 +86,138 @@ class ReviewAgent:
             conn.close()
         return result
 
-    # ── 대기 목록 조회 ────────────────────────────────
+    # ── 대기 목록 조회 (단순) ─────────────────────────
     def list_pending(self, table: str, limit: int = 20) -> list[dict]:
+        """하위호환 유지용 — list_filtered로 위임."""
+        return self.list_filtered(table, verified=0, limit=limit)
+
+    # ── 필터 목록 조회 ────────────────────────────────
+    def list_filtered(
+        self,
+        table: str,
+        level: str | None = None,
+        pos: str | None = None,
+        verified: int | None = 0,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict:
         """
-        검수 대기(verified=0) 항목 반환. 품질 낮은 순 정렬.
-        table: "words" or "questions"
+        필터 조건으로 단어/문제 목록 반환.
+        반환: {"items": list, "total": int, "has_more": bool}
         """
         if table not in VALID_TABLES:
             raise ValueError(f"유효하지 않은 테이블: {table}")
 
         conn = self._connect()
         try:
-            if table == "questions":
+            clauses: list[str] = []
+            params: list = []
+
+            if verified is not None:
+                clauses.append("verified = ?")
+                params.append(verified)
+
+            if table == "words":
+                if level:
+                    clauses.append("level = ?")
+                    params.append(level)
+                if pos:
+                    clauses.append("pos = ?")
+                    params.append(pos)
+
+                where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+                total = conn.execute(
+                    f"SELECT COUNT(*) FROM words {where}", params
+                ).fetchone()[0]
                 rows = conn.execute(
-                    """
-                    SELECT question_id AS id, grammar_point, level, q_type,
-                           stem, answer, quality_score, source, created_at
-                    FROM questions
-                    WHERE verified = 0
-                    ORDER BY quality_score ASC, created_at ASC
-                    LIMIT ?
+                    f"""
+                    SELECT word_id AS id, word, pos, level, grade_num,
+                           meaning_ko, category, source_book, verified
+                    FROM words {where}
+                    ORDER BY word ASC
+                    LIMIT ? OFFSET ?
                     """,
-                    (limit,),
+                    params + [limit, offset],
                 ).fetchall()
             else:
+                if level:
+                    clauses.append("level = ?")
+                    params.append(level)
+
+                where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+                total = conn.execute(
+                    f"SELECT COUNT(*) FROM questions {where}", params
+                ).fetchone()[0]
                 rows = conn.execute(
-                    """
-                    SELECT word_id AS id, word, pos, level, meaning_ko,
-                           source_book, verified
-                    FROM words
-                    WHERE verified = 0
-                    ORDER BY word ASC
-                    LIMIT ?
+                    f"""
+                    SELECT question_id AS id, grammar_point, level, q_type,
+                           stem, answer, quality_score, source, created_at
+                    FROM questions {where}
+                    ORDER BY quality_score ASC, created_at ASC
+                    LIMIT ? OFFSET ?
                     """,
-                    (limit,),
+                    params + [limit, offset],
                 ).fetchall()
-            return [dict(r) for r in rows]
+
+            return {
+                "items":    [dict(r) for r in rows],
+                "total":    total,
+                "has_more": (offset + limit) < total,
+            }
+        finally:
+            conn.close()
+
+    # ── 단어 수정 ─────────────────────────────────────
+    def update_word(self, word_id: str, fields: dict) -> bool:
+        """
+        단어 개별 필드 수정.
+        허용 필드: level, pos, meaning_ko, category, verified
+        """
+        ALLOWED = {"level", "pos", "meaning_ko", "category", "verified"}
+        updates = {k: v for k, v in fields.items() if k in ALLOWED}
+        if not updates:
+            return False
+
+        from backend.core.ontology import LEVEL_TO_GRADE
+        if "level" in updates:
+            updates["grade_num"] = LEVEL_TO_GRADE.get(updates["level"], 4)
+
+        set_clause = ", ".join(f"{k}=?" for k in updates)
+        values = list(updates.values()) + [word_id]
+
+        conn = self._connect()
+        try:
+            conn.execute(
+                f"UPDATE words SET {set_clause} WHERE word_id=?", values
+            )
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    # ── 일괄 레벨 변경 ────────────────────────────────
+    def bulk_update_level(self, table: str, ids: list[str], level: str) -> int:
+        """선택한 단어/문제의 레벨을 일괄 변경."""
+        if table not in VALID_TABLES or not ids:
+            return 0
+        id_col = "word_id" if table == "words" else "question_id"
+        placeholders = ",".join("?" * len(ids))
+        conn = self._connect()
+        try:
+            if table == "words":
+                from backend.core.ontology import LEVEL_TO_GRADE
+                grade = LEVEL_TO_GRADE.get(level, 4)
+                conn.execute(
+                    f"UPDATE words SET level=?, grade_num=? WHERE {id_col} IN ({placeholders})",
+                    [level, grade] + ids,
+                )
+            else:
+                conn.execute(
+                    f"UPDATE questions SET level=? WHERE {id_col} IN ({placeholders})",
+                    [level] + ids,
+                )
+            conn.commit()
+            return conn.execute("SELECT changes()").fetchone()[0]
         finally:
             conn.close()
 
