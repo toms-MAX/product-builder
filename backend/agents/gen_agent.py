@@ -119,15 +119,25 @@ class GenAgent:
             if not slots_in_tmpl:
                 stem = stem_template
                 slot_result = {}
+                slot_info   = {}
             elif use_ai and self.ai.available:
                 # 3순위: AI가 후보 중 조합 선택
                 candidates = {}
+                word_info_map: dict = {}
                 for slot in slots_in_tmpl:
                     words = self.slot._fetch_from_db(slot, grade_num, set())
-                    candidates[slot] = [w["word"] for w in words] if words \
-                        else [w["word"] for w in FALLBACK_WORDS.get(slot, [])]
+                    if words:
+                        candidates[slot] = [w["word"] for w in words]
+                        # 선택된 단어의 full info를 나중에 찾을 수 있도록 맵 저장
+                        word_info_map[slot] = {w["word"]: w for w in words}
+                    else:
+                        fb = FALLBACK_WORDS.get(slot, [])
+                        candidates[slot] = [w["word"] for w in fb]
+                        word_info_map[slot] = {w["word"]: w for w in fb}
                 selected = self.ai.select_combo(stem_template, candidates)
                 slot_result = selected
+                slot_info   = {s: word_info_map.get(s, {}).get(w, {"word": w})
+                               for s, w in selected.items()}
                 stem = stem_template
                 for s, w in selected.items():
                     stem = stem.replace(f"{{{s}}}", w)
@@ -136,6 +146,7 @@ class GenAgent:
                 filled = self.slot.fill_template(stem_template, grade_num)
                 stem = filled["stem"]
                 slot_result = {k: v["word"] for k, v in filled["slots"].items()}
+                slot_info   = filled["slots"]   # 활용형 포함 전체 word_info
 
             # 오답 보기 생성 (answer_slot 기준)
             answer_slot = tmpl.get("answer_slot")
@@ -147,8 +158,10 @@ class GenAgent:
                 if q_type in ("FIB_MCQ", "FIB_SA", "WORDFORM"):
                     stem = stem.replace(answer_word, "_____", 1)
 
-                choices, answer_idx = self.slot.make_choices(
-                    answer_word, answer_slot, grade_num, count=4
+                # 문법 인식 오답 생성 (동사 슬롯 → 같은 동사의 다른 활용형)
+                answer_word_info = slot_info.get(answer_slot, {})
+                choices, answer_idx = self.slot.make_grammar_choices(
+                    answer_word, answer_slot, answer_word_info, grade_num, count=4
                 )
                 answer = choices[answer_idx] if answer_idx >= 0 else answer_word
             else:

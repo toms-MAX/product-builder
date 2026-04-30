@@ -323,6 +323,19 @@ FALLBACK_WORDS = {
 
 # SLOT_MAP, FORM_COLUMN → backend/core/ontology.py 참조
 
+# ── 동사 슬롯 집합 ─────────────────────────────────────
+VERB_FORM_SLOTS: frozenset = frozenset({"VERB_PP", "VERB_PAST", "VERB_ING", "VERB_GENERAL"})
+
+# ── 동사 활용형 역방향 조회표 ──────────────────────────
+# FALLBACK_WORDS["VERB_GENERAL"]의 모든 활용형 → 전체 활용형 dict
+# 예) "completed" → {"word":"complete","verb_past":"completed","verb_pp":"completed","verb_ing":"completing",...}
+_VERB_CONJUGATION_LOOKUP: dict = {}
+for _e in FALLBACK_WORDS.get("VERB_GENERAL", []):
+    for _k in ("word", "verb_past", "verb_pp", "verb_ing"):
+        _f = _e.get(_k, "")
+        if _f and _f not in _VERB_CONJUGATION_LOOKUP:
+            _VERB_CONJUGATION_LOOKUP[_f] = _e
+
 
 class SlotEngine:
     """
@@ -379,6 +392,7 @@ class SlotEngine:
             results = []
             for r in rows:
                 w = dict(r)
+                w["_base_word"] = w.get("word", "")   # 변환 전 기본형 보존
                 form = cond.get("form")
                 if form and form in FORM_COLUMN:
                     w["word"] = w.get(FORM_COLUMN[form]) or w["word"]
@@ -487,4 +501,80 @@ class SlotEngine:
                     break
 
         choices = [correct_word] + distractors[:need]
+        return self.shuffle_choices(choices, correct_word)
+
+    # ── 문법 인식 보기 생성 (핵심 개선) ──────────────────
+    def make_grammar_choices(self, correct_word: str, answer_slot: str,
+                             word_info: dict, grade_num: int = 4,
+                             count: int = 4) -> tuple[list[str], int]:
+        """
+        문법 포인트를 테스트하는 오답 생성.
+
+        동사 슬롯(VERB_PP / VERB_PAST / VERB_ING / VERB_GENERAL):
+            같은 동사의 다른 활용형을 오답으로 사용.
+            예) 정답 "completed" → 오답 "complete" / "completing" / "completes"
+
+        기타 슬롯:
+            기존 방식 — 다른 단어, 같은 카테고리.
+        """
+        if answer_slot in VERB_FORM_SLOTS:
+            return self._make_verb_form_choices(correct_word, word_info, count)
+        return self.make_choices(correct_word, answer_slot, grade_num, count)
+
+    @staticmethod
+    def _third_person_present(base: str) -> str:
+        """기본형 → 3인칭 단수 현재형."""
+        if not base:
+            return ""
+        if base.endswith(("s", "x", "z", "o")):
+            return base + "es"
+        if base.endswith("ch") or base.endswith("sh"):
+            return base + "es"
+        if base.endswith("y") and len(base) > 1 and base[-2] not in "aeiou":
+            return base[:-1] + "ies"
+        return base + "s"
+
+    def _make_verb_form_choices(self, correct_word: str,
+                                word_info: dict,
+                                count: int = 4) -> tuple[list[str], int]:
+        """
+        같은 동사의 활용형(기본형·과거형·pp형·ing형·3인칭현재)을 오답으로.
+        활용형이 부족하면 기존 어휘 방식으로 보충.
+        """
+        # 1. 전역 룩업에서 전체 활용형 찾기
+        conj = (_VERB_CONJUGATION_LOOKUP.get(correct_word)
+                or _VERB_CONJUGATION_LOOKUP.get(word_info.get("_base_word", ""))
+                or _VERB_CONJUGATION_LOOKUP.get(word_info.get("word", "")))
+
+        if conj:
+            base = conj.get("word", "")
+            past = conj.get("verb_past", "")
+            pp   = conj.get("verb_pp", "")
+            ing  = conj.get("verb_ing", "")
+        else:
+            # DB 레코드에서 직접 추출 (룩업 미스 시 폴백)
+            base = word_info.get("_base_word") or word_info.get("word", correct_word)
+            past = word_info.get("verb_past", "")
+            pp   = word_info.get("verb_pp", "")
+            ing  = word_info.get("verb_ing", "")
+
+        third_sg = self._third_person_present(base)
+
+        # 2. 정답과 다른 활용형만 오답 후보로
+        candidate_forms = [base, past, pp, ing, third_sg]
+        distractors: list[str] = []
+        for f in candidate_forms:
+            if f and f != correct_word and f not in distractors:
+                distractors.append(f)
+
+        # 3. 활용형이 3개 미만이면 어휘 방식으로 보충
+        if len(distractors) < count - 1:
+            extra, _ = self.make_choices(correct_word, "VERB_PP", 4, count + 2)
+            for w in extra:
+                if w != correct_word and w not in distractors:
+                    distractors.append(w)
+                if len(distractors) >= count - 1:
+                    break
+
+        choices = [correct_word] + distractors[:count - 1]
         return self.shuffle_choices(choices, correct_word)
