@@ -1,0 +1,30 @@
+grammar_point: 비교급
+description: "Comparative — more/er + than"
+level_min: 1
+level_max: 8
+templates:
+  - id: 비교급_001
+    stem: "A {SUBJECT_PERSON} is more {ADJ_POSITIVE} than a {SUBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: ADJ_POSITIVE
+    note: "more ~ than 비교급"
+
+  - id: 비교급_002
+    stem: "The {OBJECT_THING} is more {ADJ_POSITIVE} than I expected."
+    q_type: FIB_MCQ
+    answer_slot: ADJ_POSITIVE
+    note: "than 절 비교"
+
+  - id: 비교급_003
+    stem: "The {SUBJECT_PERSON} became more {ADJ_POSITIVE} after {VERB_ING} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: ADJ_POSITIVE
+    level_min: 2
+    note: "비교급 변화 after"
+
+  - id: 비교급_004
+    stem: "The more the {SUBJECT_PERSON} {VERB_PAST}, the more {ADJ_POSITIVE} they became."
+    q_type: FIB_MCQ
+    answer_slot: ADJ_POSITIVE
+    level_min: 3
+    note: "the + 비교급, the + 비교급"

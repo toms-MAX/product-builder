@@ -1,0 +1,28 @@
+grammar_point: 현재진행
+description: "Present Progressive — am/is/are + -ing"
+level_min: 1
+level_max: 6
+templates:
+  - id: 현재진행_001
+    stem: "The {SUBJECT_PERSON} is {VERB_ING} the {OBJECT_THING} right now."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "right now — 현재 진행"
+
+  - id: 현재진행_002
+    stem: "Look! The {SUBJECT_PERSON} is {VERB_ING} the {OBJECT_THING} over there."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "감탄사 Look + 현재진행"
+
+  - id: 현재진행_003
+    stem: "What is the {SUBJECT_PERSON} {VERB_ING} at the moment?"
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "현재진행 의문문"
+
+  - id: 현재진행_004
+    stem: "The {SUBJECT_PERSON} and I are {VERB_ING} the {OBJECT_THING} together."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "복수 주어 현재진행"

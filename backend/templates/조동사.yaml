@@ -1,0 +1,36 @@
+grammar_point: 조동사
+description: "Modal Verbs — can/must/should/may/might/have to"
+level_min: 1
+level_max: 8
+templates:
+  - id: 조동사_001
+    stem: "You must {VERB_GENERAL} the {OBJECT_THING} before the deadline."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "must — 의무"
+
+  - id: 조동사_002
+    stem: "The {SUBJECT_PERSON} should {VERB_GENERAL} the {OBJECT_THING} carefully."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "should — 권고"
+
+  - id: 조동사_003
+    stem: "The {SUBJECT_PERSON} could not {VERB_GENERAL} the {OBJECT_THING} alone."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    level_min: 2
+    note: "could not — 과거 불능"
+
+  - id: 조동사_004
+    stem: "The {SUBJECT_PERSON} may {VERB_GENERAL} the {OBJECT_THING} if needed."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "may — 허가/가능성"
+
+  - id: 조동사_005
+    stem: "The {SUBJECT_PERSON} had to {VERB_GENERAL} the {OBJECT_THING} on their own."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    level_min: 2
+    note: "had to — 과거 의무"

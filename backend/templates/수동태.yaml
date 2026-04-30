@@ -1,0 +1,49 @@
+grammar_point: 수동태
+description: "Passive Voice — be + p.p."
+level_min: 1
+level_max: 8
+templates:
+  - id: 수동태_001
+    stem: "The {OBJECT_THING} was {VERB_PP} by the {SUBJECT_PERSON}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    note: "단순 과거 수동태"
+
+  - id: 수동태_002
+    stem: "The {OBJECT_THING} was successfully {VERB_PP} by the {SUBJECT_PERSON}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    level_min: 2
+    note: "부사 포함 수동태"
+
+  - id: 수동태_003
+    stem: "The {OBJECT_THING} is being {VERB_PP} {ADV_MANNER}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    note: "현재진행 수동태"
+
+  - id: 수동태_004
+    stem: "The {OBJECT_THING} has been {VERB_PP} by many {SUBJECT_PERSON}s."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    note: "현재완료 수동태"
+
+  - id: 수동태_005
+    stem: "The {OBJECT_THING} will be {VERB_PP} by next week."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    level_min: 3
+    note: "미래 수동태"
+
+  - id: 수동태_006
+    stem: "The {OBJECT_THING} was {VERB_PP} {ADV_MANNER} by the {SUBJECT_PERSON}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    note: "부사 수식 과거 수동태"
+
+  - id: 수동태_007
+    stem: "The {OBJECT_THING} should be {VERB_PP} before the deadline."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    level_min: 2
+    note: "조동사 수동태"

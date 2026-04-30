@@ -1,0 +1,36 @@
+grammar_point: 관계사
+description: "Relative Clause — who/which/that/whose/where/when"
+level_min: 1
+level_max: 8
+templates:
+  - id: 관계사_001
+    stem: "The {SUBJECT_PERSON} who {VERB_PAST} the {OBJECT_THING} was praised."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    note: "who — 사람 선행사"
+
+  - id: 관계사_002
+    stem: "I know the {SUBJECT_PERSON} who {VERB_PAST} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    note: "who 목적격 관계사"
+
+  - id: 관계사_003
+    stem: "The {OBJECT_THING} that the {SUBJECT_PERSON} {VERB_PAST} was useful."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    note: "that — 사물 선행사"
+
+  - id: 관계사_004
+    stem: "The {SUBJECT_PERSON} whose {OBJECT_THING} was lost felt upset."
+    q_type: FIB_MCQ
+    answer_slot: OBJECT_THING
+    level_min: 3
+    note: "whose — 소유격 관계사"
+
+  - id: 관계사_005
+    stem: "This is the {PLACE} where the {SUBJECT_PERSON} {VERB_PAST} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    level_min: 3
+    note: "where — 장소 관계부사"

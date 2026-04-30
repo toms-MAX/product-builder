@@ -1,0 +1,31 @@
+grammar_point: 최상급
+description: "Superlative — the most/est"
+level_min: 2
+level_max: 8
+templates:
+  - id: 최상급_001
+    stem: "The {SUBJECT_PERSON} is the most {ADJ_POSITIVE} in the school."
+    q_type: FIB_MCQ
+    answer_slot: ADJ_POSITIVE
+    note: "most 최상급"
+
+  - id: 최상급_002
+    stem: "It was the most {ADJ_POSITIVE} {OBJECT_THING} I had ever seen."
+    q_type: FIB_MCQ
+    answer_slot: ADJ_POSITIVE
+    level_min: 3
+    note: "최상급 + have ever p.p."
+
+  - id: 최상급_003
+    stem: "This is one of the most {ADJ_POSITIVE} {OBJECT_THING}s in the world."
+    q_type: FIB_MCQ
+    answer_slot: ADJ_POSITIVE
+    level_min: 3
+    note: "one of the 최상급 + 복수명사"
+
+  - id: 최상급_004
+    stem: "The {SUBJECT_PERSON} did their best to {VERB_GENERAL} the most {ADJ_POSITIVE} {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: ADJ_POSITIVE
+    level_min: 4
+    note: "최상급 형용사 수식"

@@ -1,0 +1,29 @@
+grammar_point: 미래시제
+description: "Simple Future — will / be going to"
+level_min: 1
+level_max: 8
+templates:
+  - id: 미래시제_001
+    stem: "The {SUBJECT_PERSON} will {VERB_GENERAL} the {OBJECT_THING} tomorrow."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "will — 단순 미래"
+
+  - id: 미래시제_002
+    stem: "The {SUBJECT_PERSON} is going to {VERB_GENERAL} the {OBJECT_THING} soon."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    level_max: 6
+    note: "be going to — 계획된 미래"
+
+  - id: 미래시제_003
+    stem: "Will the {SUBJECT_PERSON} {VERB_GENERAL} the {OBJECT_THING} next week?"
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "will 의문문"
+
+  - id: 미래시제_004
+    stem: "The {SUBJECT_PERSON} will not {VERB_GENERAL} the {OBJECT_THING} without help."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "will not 부정문"

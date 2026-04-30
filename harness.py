@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-harness.py — Claude Code 하네스 에이전트 실행기
-================================================
-이 스크립트가 에이전트의 뇌 역할을 합니다.
-태스크 큐를 읽고, 실행하고, 결과를 검증하고, 보고합니다.
+harness.py — 영어 문제은행 하네스 에이전트
+============================================
+태스크 관리, 온톨로지 검증, 템플릿 동기화를 담당.
 
 사용법:
-    python harness.py              # 다음 태스크 자동 실행
-    python harness.py --task 001   # 특정 태스크 실행
-    python harness.py --status     # 현재 상태 확인
-    python harness.py --verify     # 전체 파일 검증
+    python harness.py                   # 현재 상태 확인
+    python harness.py --status          # 현재 상태 확인
+    python harness.py --verify          # 파일 존재 여부 검증
+    python harness.py --validate        # 온톨로지 검증 (DB 전체)
+    python harness.py --sync-templates  # YAML → DB 템플릿 동기화
+    python harness.py --health          # 전체 시스템 헬스체크
+    python harness.py --task 001        # 특정 태스크 안내
 """
 
 import os
@@ -19,6 +21,8 @@ import sqlite3
 import subprocess
 from pathlib import Path
 from datetime import datetime
+
+sys.path.insert(0, str(Path(__file__).parent))
 
 
 # ── 태스크 정의 ────────────────────────────────────────
@@ -74,6 +78,22 @@ TASKS = {
             "backend/agents/review_agent.py",
         ],
         "verify_cmd": "python -c \"from backend.agents.review_agent import ReviewAgent; print('OK')\"",
+    },
+    "008": {
+        "name": "온톨로지 + 템플릿 모듈화 (문법별 YAML)",
+        "files_to_create": [
+            "backend/core/ontology.py",
+            "backend/templates/loader.py",
+            "backend/templates/현재완료.yaml",
+        ],
+        "verify_cmd": "python -m backend.templates.loader --validate",
+    },
+    "009": {
+        "name": "DOC-IN 실전 파이프라인 (PDF 교재 → DB)",
+        "files_to_create": [
+            "backend/agents/doc_agent.py",
+        ],
+        "verify_cmd": "python -c \"from backend.agents.doc_agent import DocAgent; print('OK')\"",
     },
 }
 
@@ -131,12 +151,78 @@ def verify_db():
     return result
 
 
+def validate_ontology() -> dict:
+    """
+    DB 전체 레코드를 온톨로지 기준으로 검증.
+    반환: {"ok": bool, "errors": list[str], "counts": dict}
+    """
+    try:
+        from backend.core.ontology import validate_word, validate_template, validate_question
+    except ImportError as e:
+        return {"ok": False, "errors": [f"온톨로지 임포트 실패: {e}"], "counts": {}}
+
+    db_path = "backend/db/qbank.db"
+    if not Path(db_path).exists():
+        return {"ok": False, "errors": ["DB 파일 없음"], "counts": {}}
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    errors: list[str] = []
+    counts = {"words": 0, "templates": 0, "questions": 0,
+              "word_errors": 0, "template_errors": 0, "question_errors": 0}
+
+    try:
+        for row in conn.execute("SELECT * FROM words").fetchall():
+            counts["words"] += 1
+            for err in validate_word(dict(row)):
+                errors.append(f"[words] {row['word']}: {err}")
+                counts["word_errors"] += 1
+
+        for row in conn.execute("SELECT * FROM templates").fetchall():
+            counts["templates"] += 1
+            for err in validate_template(dict(row)):
+                errors.append(f"[templates] {row['template_id']}: {err}")
+                counts["template_errors"] += 1
+
+        for row in conn.execute("SELECT * FROM questions").fetchall():
+            counts["questions"] += 1
+            for err in validate_question(dict(row)):
+                errors.append(f"[questions] {row['question_id'][:8]}…: {err}")
+                counts["question_errors"] += 1
+    finally:
+        conn.close()
+
+    return {"ok": len(errors) == 0, "errors": errors, "counts": counts}
+
+
+def sync_templates(dry_run: bool = False) -> dict:
+    """YAML 템플릿 파일을 DB에 동기화."""
+    try:
+        from backend.templates.loader import load_all_yaml, sync_to_db
+        from backend.db.qbank import DB_PATH
+    except Exception:
+        db_path = Path("backend/db/qbank.db")
+        try:
+            from backend.templates.loader import load_all_yaml, sync_to_db
+        except ImportError as e:
+            return {"ok": False, "error": str(e)}
+
+    records, errors = load_all_yaml()
+    if errors:
+        return {"ok": False, "errors": errors, "records": len(records)}
+
+    stats = sync_to_db(records, dry_run=dry_run)
+    stats["ok"] = True
+    stats["records"] = len(records)
+    return stats
+
+
 # ── 리포트 출력 ────────────────────────────────────────
 
 def print_header():
-    print("\n" + "="*55)
-    print("  🤖 영어 문제은행 하네스 에이전트")
-    print("="*55)
+    print("\n" + "="*60)
+    print("  영어 문제은행 하네스 에이전트")
+    print("="*60)
 
 def print_status():
     print_header()
@@ -360,6 +446,134 @@ python backend/agents/review_agent.py --reject questions:id1
 
 # ── 메인 ───────────────────────────────────────────────
 
+def print_validate():
+    """온톨로지 검증 결과 출력."""
+    print_header()
+    print("\n  온톨로지 검증 중...")
+    result = validate_ontology()
+    counts = result.get("counts", {})
+
+    print(f"\n  검증 대상:")
+    print(f"    words    : {counts.get('words', 0):>5}개")
+    print(f"    templates: {counts.get('templates', 0):>5}개")
+    print(f"    questions: {counts.get('questions', 0):>5}개")
+
+    errors = result.get("errors", [])
+    if not errors:
+        print("\n  [OK] 모든 레코드가 온톨로지를 준수합니다.")
+    else:
+        print(f"\n  [위반] {len(errors)}건 발견:")
+        for e in errors[:30]:
+            print(f"    x {e}")
+        if len(errors) > 30:
+            print(f"    ... 외 {len(errors)-30}건")
+    print()
+    return result["ok"]
+
+
+def print_sync_templates(dry_run: bool = False):
+    """YAML → DB 동기화 결과 출력."""
+    print_header()
+    mode = "[DRY-RUN] " if dry_run else ""
+    print(f"\n  {mode}YAML 템플릿 DB 동기화 중...")
+
+    try:
+        from backend.templates.loader import load_all_yaml, sync_to_db
+    except ImportError as e:
+        print(f"\n  [오류] {e}")
+        return False
+
+    records, errors = load_all_yaml()
+    print(f"  YAML 파일에서 {len(records)}개 템플릿 로드")
+
+    if errors:
+        print(f"\n  [오류] 온톨로지 위반 {len(errors)}건:")
+        for e in errors:
+            print(f"    x {e}")
+        print()
+        return False
+
+    db_path = Path("backend/db/qbank.db")
+    stats = sync_to_db(records, db_path, dry_run=dry_run)
+    print(f"\n  동기화 결과:")
+    print(f"    신규: {stats['inserted']}개")
+    print(f"    갱신: {stats['updated']}개")
+    print(f"    삭제: {stats['deleted']}개 (레거시 UUID 템플릿)")
+    print()
+    return True
+
+
+def print_health():
+    """전체 시스템 헬스체크."""
+    print_header()
+    print("\n  시스템 헬스체크\n")
+    all_ok = True
+
+    # 1. 파일 존재
+    print("  [1] 핵심 파일 검증")
+    core_files = [
+        "backend/core/ontology.py",
+        "backend/templates/loader.py",
+        "backend/utils/slot_engine.py",
+        "backend/utils/ai_client.py",
+        "backend/agents/doc_agent.py",
+        "backend/agents/gen_agent.py",
+        "backend/agents/build_agent.py",
+        "backend/agents/review_agent.py",
+        "backend/db/qbank.db",
+    ]
+    for f in core_files:
+        ok = Path(f).exists()
+        icon = "OK" if ok else "XX"
+        print(f"    [{icon}] {f}")
+        if not ok:
+            all_ok = False
+
+    # 2. YAML 파일 수
+    yaml_files = list(Path("backend/templates").glob("*.yaml"))
+    print(f"\n  [2] YAML 템플릿 파일: {len(yaml_files)}개")
+    for y in sorted(yaml_files):
+        print(f"       {y.name}")
+
+    # 3. DB 상태
+    db = verify_db()
+    print(f"\n  [3] DB 현황")
+    print(f"    단어     : {db.get('words', 0)}개")
+    print(f"    템플릿   : {db.get('templates', 0)}개")
+    print(f"    완성문제 : {db.get('questions', 0)}개")
+
+    # 4. 온톨로지 검증 (요약)
+    result = validate_ontology()
+    err_count = len(result.get("errors", []))
+    print(f"\n  [4] 온톨로지 검증: {'OK' if err_count == 0 else f'위반 {err_count}건'}")
+    if err_count:
+        all_ok = False
+
+    # 5. 임포트 검증
+    print(f"\n  [5] 임포트 검증")
+    checks = [
+        ("from backend.core.ontology import SLOT_MAP", "ontology"),
+        ("from backend.utils.slot_engine import SlotEngine", "slot_engine"),
+        ("from backend.agents.gen_agent import GenAgent", "gen_agent"),
+    ]
+    import subprocess
+    for cmd, label in checks:
+        r = subprocess.run(
+            [sys.executable, "-c", cmd],
+            capture_output=True, text=True
+        )
+        ok = r.returncode == 0
+        icon = "OK" if ok else "XX"
+        print(f"    [{icon}] {label}")
+        if not ok:
+            all_ok = False
+            print(f"         {r.stderr.strip()[:80]}")
+
+    print(f"\n  {'[헬스체크 통과]' if all_ok else '[문제 발견 — 위 항목 확인 필요]'}")
+    print()
+    return all_ok
+
+
 def main():
     args = sys.argv[1:]
 
@@ -370,13 +584,26 @@ def main():
         ok = print_verify()
         sys.exit(0 if ok else 1)
 
+    elif "--validate" in args:
+        ok = print_validate()
+        sys.exit(0 if ok else 1)
+
+    elif "--sync-templates" in args:
+        dry = "--dry-run" in args
+        ok = print_sync_templates(dry_run=dry)
+        sys.exit(0 if ok else 1)
+
+    elif "--health" in args:
+        ok = print_health()
+        sys.exit(0 if ok else 1)
+
     elif "--task" in args:
         idx = args.index("--task")
         if idx + 1 < len(args):
             task_id = args[idx + 1].zfill(3)
             run_task(task_id)
         else:
-            print("❌ 태스크 번호를 지정해주세요. 예: python harness.py --task 001")
+            print("태스크 번호를 지정해주세요. 예: python harness.py --task 001")
 
     elif "--complete" in args:
         idx = args.index("--complete")
@@ -387,9 +614,9 @@ def main():
                 status["completed"].append(task_id)
                 status["last_run"] = datetime.now().isoformat()
                 save_status(status)
-                print(f"✅ TASK-{task_id} 완료 처리됨")
+                print(f"TASK-{task_id} 완료 처리됨")
             else:
-                print(f"ℹ️ TASK-{task_id} 이미 완료됨")
+                print(f"TASK-{task_id} 이미 완료됨")
             print_status()
 
     else:

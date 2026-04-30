@@ -4,12 +4,20 @@ slot_engine.py — 템플릿 × 단어 조합 엔진
 DB에서 슬롯별 단어를 꺼내 문장 틀을 채움.
 DB 단어가 부족하면 내장 기본 단어풀로 폴백.
 AI 없이 완전 동작.
+
+SLOT_MAP / FORM_COLUMN은 ontology.py에서 임포트 — 이 파일에서 직접 수정 금지.
 """
 
 import json
 import random
 import sqlite3
+import sys
 from pathlib import Path
+
+_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(_ROOT))
+
+from backend.core.ontology import SLOT_MAP, FORM_COLUMN  # noqa: E402
 
 
 # ── 내장 기본 단어풀 (AI 완전 먹통 + DB 비어있을 때 폴백) ──────
@@ -86,26 +94,7 @@ FALLBACK_WORDS = {
     ],
 }
 
-# ── SLOT_MAP: 슬롯명 → DB 조회 조건 ───────────────────
-SLOT_MAP = {
-    "SUBJECT_PERSON": {"pos": "noun",      "category": "사람/직업"},
-    "SUBJECT_THING":  {"pos": "noun",      "category": "사물"},
-    "OBJECT_THING":   {"pos": "noun",      "category": None},
-    "VERB_GENERAL":   {"pos": "verb",      "form": "base"},
-    "VERB_PAST":      {"pos": "verb",      "form": "verb_past"},
-    "VERB_PP":        {"pos": "verb",      "form": "verb_pp"},
-    "VERB_ING":       {"pos": "verb",      "form": "verb_ing"},
-    "ADJ_POSITIVE":   {"pos": "adjective", "category": None},
-    "ADV_MANNER":     {"pos": "adverb",    "category": None},
-    "NOUN_ABSTRACT":  {"pos": "noun",      "category": "추상개념"},
-}
-
-# form → DB 컬럼명
-FORM_COLUMN = {
-    "verb_past": "verb_past",
-    "verb_pp":   "verb_pp",
-    "verb_ing":  "verb_ing",
-}
+# SLOT_MAP, FORM_COLUMN → backend/core/ontology.py 참조
 
 
 class SlotEngine:
@@ -141,9 +130,15 @@ class SlotEngine:
                 clauses.append("pos = ?")
                 params.append(cond["pos"])
 
-            if cond.get("category"):
-                clauses.append("category = ?")
-                params.append(cond["category"])
+            cat = cond.get("category")
+            if cat:
+                if isinstance(cat, list):
+                    placeholders = ",".join("?" * len(cat))
+                    clauses.append(f"category IN ({placeholders})")
+                    params.extend(cat)
+                else:
+                    clauses.append("category = ?")
+                    params.append(cat)
 
             # 레벨 범위: ±1 허용
             clauses.append("grade_num BETWEEN ? AND ?")

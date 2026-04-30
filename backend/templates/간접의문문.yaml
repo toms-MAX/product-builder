@@ -1,0 +1,29 @@
+grammar_point: 간접의문문
+description: "Indirect Question — 의문사 + 주어 + 동사 어순"
+level_min: 3
+level_max: 8
+templates:
+  - id: 간접의문문_001
+    stem: "Do you know how the {SUBJECT_PERSON} {VERB_PAST} the {OBJECT_THING}?"
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    note: "how 간접의문문"
+
+  - id: 간접의문문_002
+    stem: "I wonder why the {SUBJECT_PERSON} {VERB_PAST} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    note: "why 간접의문문"
+
+  - id: 간접의문문_003
+    stem: "She asked when the {SUBJECT_PERSON} would {VERB_GENERAL} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    level_min: 4
+    note: "when 간접의문문 — 미래"
+
+  - id: 간접의문문_004
+    stem: "Tell me what the {SUBJECT_PERSON} {VERB_PAST} for the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    note: "what 간접의문문 명령문"

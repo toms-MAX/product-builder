@@ -1,0 +1,28 @@
+grammar_point: 과거진행
+description: "Past Progressive — was/were + -ing"
+level_min: 2
+level_max: 8
+templates:
+  - id: 과거진행_001
+    stem: "The {SUBJECT_PERSON} was {VERB_ING} the {OBJECT_THING} when it happened."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "when 절 — 과거진행 + 과거"
+
+  - id: 과거진행_002
+    stem: "While the {SUBJECT_PERSON} was {VERB_ING} the {OBJECT_THING}, the phone rang."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "while 절 — 동시 진행"
+
+  - id: 과거진행_003
+    stem: "The {SUBJECT_PERSON} was {VERB_ING} the {OBJECT_THING} all afternoon."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "all afternoon — 지속적 과거 행동"
+
+  - id: 과거진행_004
+    stem: "What was the {SUBJECT_PERSON} {VERB_ING} at that time?"
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "과거진행 의문문"

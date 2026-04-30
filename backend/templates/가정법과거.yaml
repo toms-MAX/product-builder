@@ -1,0 +1,23 @@
+grammar_point: 가정법과거
+description: "Subjunctive Past — If + 과거형, would + 원형"
+level_min: 4
+level_max: 8
+templates:
+  - id: 가정법과거_001
+    stem: "If the {SUBJECT_PERSON} {VERB_PAST} harder, they would succeed."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    note: "가정법 과거 — 동사 과거형 빈칸"
+
+  - id: 가정법과거_002
+    stem: "If I were a {SUBJECT_PERSON}, I would {VERB_GENERAL} the {OBJECT_THING} differently."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "If I were — 주절 would + 원형"
+
+  - id: 가정법과거_003
+    stem: "The {SUBJECT_PERSON} would {VERB_GENERAL} the {OBJECT_THING} if they had the chance."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    level_min: 5
+    note: "주절 → 종속절 순서"

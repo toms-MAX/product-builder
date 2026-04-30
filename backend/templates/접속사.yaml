@@ -1,0 +1,37 @@
+grammar_point: 접속사
+description: "Conjunction — because/although/when/if/after/before/since"
+level_min: 1
+level_max: 8
+templates:
+  - id: 접속사_001
+    stem: "The {SUBJECT_PERSON} succeeded because they {VERB_PAST} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    note: "because — 이유"
+
+  - id: 접속사_002
+    stem: "Although the {SUBJECT_PERSON} was tired, they {VERB_PAST} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    level_min: 2
+    note: "although — 양보"
+
+  - id: 접속사_003
+    stem: "The {SUBJECT_PERSON} will {VERB_GENERAL} the {OBJECT_THING} when they are ready."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    level_min: 2
+    note: "when — 시간절 (미래 → 현재)"
+
+  - id: 접속사_004
+    stem: "After the {SUBJECT_PERSON} {VERB_PAST} the {OBJECT_THING}, they took a rest."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    note: "after — 시간 순서"
+
+  - id: 접속사_005
+    stem: "If the {SUBJECT_PERSON} {VERB_GENERAL} the {OBJECT_THING}, they will succeed."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    level_min: 2
+    note: "if — 조건절 (1형식 가정)"

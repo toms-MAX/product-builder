@@ -1,0 +1,28 @@
+grammar_point: 과거시제
+description: "Simple Past — 동사 과거형"
+level_min: 1
+level_max: 8
+templates:
+  - id: 과거시제_001
+    stem: "The {SUBJECT_PERSON} {VERB_PAST} the {OBJECT_THING} yesterday."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    note: "yesterday — 과거 시점"
+
+  - id: 과거시제_002
+    stem: "The {SUBJECT_PERSON} {VERB_PAST} the {OBJECT_THING} {ADV_MANNER} last week."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PAST
+    note: "부사 + last week"
+
+  - id: 과거시제_003
+    stem: "Did the {SUBJECT_PERSON} {VERB_GENERAL} the {OBJECT_THING} last night?"
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "Did 의문문 — 원형 빈칸"
+
+  - id: 과거시제_004
+    stem: "The {SUBJECT_PERSON} did not {VERB_GENERAL} the {OBJECT_THING} on time."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "did not 부정문"

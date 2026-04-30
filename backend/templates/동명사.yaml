@@ -1,0 +1,35 @@
+grammar_point: 동명사
+description: "Gerund — 동사원형 + -ing (명사 역할)"
+level_min: 1
+level_max: 8
+templates:
+  - id: 동명사_001
+    stem: "The {SUBJECT_PERSON} enjoyed {VERB_ING} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "enjoy + 동명사 목적어"
+
+  - id: 동명사_002
+    stem: "{VERB_ING} the {OBJECT_THING} is the {SUBJECT_PERSON}'s main responsibility."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "동명사 주어"
+
+  - id: 동명사_003
+    stem: "The {SUBJECT_PERSON} finished {VERB_ING} the {OBJECT_THING} early."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "finish + 동명사"
+
+  - id: 동명사_004
+    stem: "The {SUBJECT_PERSON} gave up {VERB_ING} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    level_min: 2
+    note: "give up + 동명사"
+
+  - id: 동명사_005
+    stem: "The {SUBJECT_PERSON} is good at {VERB_ING} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "전치사 + 동명사"

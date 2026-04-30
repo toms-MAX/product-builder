@@ -1,0 +1,23 @@
+grammar_point: 가정법과거완료
+description: "Subjunctive Past Perfect — If + had p.p., would have p.p."
+level_min: 5
+level_max: 8
+templates:
+  - id: 가정법과거완료_001
+    stem: "If the {SUBJECT_PERSON} had {VERB_PP} the {OBJECT_THING}, they would have succeeded."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    note: "If절 — had + p.p."
+
+  - id: 가정법과거완료_002
+    stem: "The {SUBJECT_PERSON} would have {VERB_PP} the {OBJECT_THING} if they had tried harder."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    note: "주절 — would have + p.p."
+
+  - id: 가정법과거완료_003
+    stem: "If they had {VERB_PP} the {OBJECT_THING} earlier, everything would have been fine."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    level_min: 6
+    note: "시간 부사 earlier 포함"

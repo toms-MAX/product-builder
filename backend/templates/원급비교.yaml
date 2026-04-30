@@ -1,0 +1,29 @@
+grammar_point: 원급비교
+description: "Positive Degree — as ~ as"
+level_min: 3
+level_max: 8
+templates:
+  - id: 원급비교_001
+    stem: "This {OBJECT_THING} is not as {ADJ_POSITIVE} as the other one."
+    q_type: FIB_MCQ
+    answer_slot: ADJ_POSITIVE
+    note: "not as ~ as 부정 원급"
+
+  - id: 원급비교_002
+    stem: "The {SUBJECT_PERSON} is as {ADJ_POSITIVE} as any {SUBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: ADJ_POSITIVE
+    note: "as ~ as any 최상급 의미"
+
+  - id: 원급비교_003
+    stem: "The {SUBJECT_PERSON} worked as {ADV_MANNER} as possible to finish the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: ADV_MANNER
+    note: "as ~ as possible"
+
+  - id: 원급비교_004
+    stem: "This {OBJECT_THING} is twice as {ADJ_POSITIVE} as that one."
+    q_type: FIB_MCQ
+    answer_slot: ADJ_POSITIVE
+    level_min: 4
+    note: "배수 원급 비교"

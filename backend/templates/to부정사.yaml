@@ -1,0 +1,43 @@
+grammar_point: to부정사
+description: "Infinitive — to + 동사원형"
+level_min: 1
+level_max: 8
+templates:
+  - id: to부정사_001
+    stem: "The {SUBJECT_PERSON} decided to {VERB_GENERAL} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "to부정사 — 목적어"
+
+  - id: to부정사_002
+    stem: "It is important for a {SUBJECT_PERSON} to {VERB_GENERAL} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "의미상 주어 for + to부정사"
+
+  - id: to부정사_003
+    stem: "The {SUBJECT_PERSON} worked hard to {VERB_GENERAL} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    level_min: 2
+    note: "목적 — to부정사 부사적 용법"
+
+  - id: to부정사_004
+    stem: "The {SUBJECT_PERSON} was pleased to {VERB_GENERAL} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    level_min: 2
+    note: "감정 형용사 + to부정사"
+
+  - id: to부정사_005
+    stem: "The best way to {VERB_GENERAL} the {OBJECT_THING} is to practice daily."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    level_min: 3
+    note: "to부정사 — 형용사적 용법"
+
+  - id: to부정사_006
+    stem: "The {SUBJECT_PERSON} needed more time to {VERB_GENERAL} the {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer_slot: VERB_GENERAL
+    note: "명사 수식 to부정사"

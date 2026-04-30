@@ -1,0 +1,36 @@
+grammar_point: 분사
+description: "Participle — 현재분사(-ing) / 과거분사(-ed)"
+level_min: 2
+level_max: 8
+templates:
+  - id: 분사_001
+    stem: "The {SUBJECT_PERSON} {VERB_ING} the {OBJECT_THING} looked tired."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    note: "현재분사 — 명사 수식"
+
+  - id: 분사_002
+    stem: "The {OBJECT_THING} {VERB_PP} by the {SUBJECT_PERSON} was excellent."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    note: "과거분사 — 명사 수식"
+
+  - id: 분사_003
+    stem: "The {SUBJECT_PERSON} found the {OBJECT_THING} {VERB_ING} in the room."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    level_min: 3
+    note: "지각동사 + 목적어 + 분사"
+
+  - id: 분사_004
+    stem: "{VERB_ING} the {OBJECT_THING}, the {SUBJECT_PERSON} felt satisfied."
+    q_type: FIB_MCQ
+    answer_slot: VERB_ING
+    level_min: 3
+    note: "분사구문 — 동시 동작"
+
+  - id: 분사_005
+    stem: "The {OBJECT_THING} {VERB_PP} by the teacher was very useful."
+    q_type: FIB_MCQ
+    answer_slot: VERB_PP
+    note: "과거분사구 — 명사 후치 수식"
