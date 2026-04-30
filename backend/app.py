@@ -22,11 +22,13 @@ from flask import Flask, Response, jsonify, request, send_from_directory, send_f
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-from backend.agents.doc_agent    import DocAgent
-from backend.agents.gen_agent    import GenAgent
-from backend.agents.build_agent  import BuildAgent
-from backend.agents.review_agent import ReviewAgent
-from backend.agents.doc_agent    import ensure_db
+from backend.agents.doc_agent       import DocAgent
+from backend.agents.gen_agent       import GenAgent
+from backend.agents.build_agent     import BuildAgent
+from backend.agents.review_agent    import ReviewAgent
+from backend.agents.ai_review_agent import AIReviewAgent
+from backend.agents.janitor_agent   import JanitorAgent
+from backend.agents.doc_agent       import ensure_db
 
 DB_PATH     = ROOT / "backend" / "db" / "qbank.db"
 UPLOAD_DIR  = ROOT / "data" / "uploads"
@@ -306,6 +308,79 @@ def api_review_reject():
     agent = ReviewAgent(db_path=DB_PATH)
     count = agent.reject(table, ids)
     return jsonify({"success": True, "deleted": count, "db": _db_stats()})
+
+
+# ── AI REVIEW ────────────────────────────────────────
+@app.route("/api/ai-review/report")
+def api_ai_review_report():
+    agent = AIReviewAgent(db_path=DB_PATH)
+    return jsonify(agent.report())
+
+
+@app.route("/api/ai-review/scan/<table>")
+def api_ai_review_scan(table):
+    if table not in ("words", "questions"):
+        return jsonify({"error": "잘못된 테이블"}), 400
+    limit = min(int(request.args.get("limit", 50)), 200)
+    agent = AIReviewAgent(db_path=DB_PATH)
+    if table == "words":
+        items = agent.scan_words(limit=limit)
+    else:
+        items = agent.scan_questions(limit=limit)
+        agent.update_quality_scores(items)
+    return jsonify({"items": items, "count": len(items)})
+
+
+@app.route("/api/ai-review/auto-approve", methods=["POST"])
+def api_ai_auto_approve():
+    data      = request.json or {}
+    threshold = int(data.get("threshold", 9))
+    agent     = AIReviewAgent(db_path=DB_PATH)
+    w_cnt     = agent.auto_approve_words()
+    q_cnt     = agent.auto_approve_questions(threshold=threshold)
+    return jsonify({
+        "success":         True,
+        "words_approved":  w_cnt,
+        "questions_approved": q_cnt,
+        "db":              _db_stats(),
+    })
+
+
+# ── JANITOR ───────────────────────────────────────────
+@app.route("/api/janitor/scan")
+def api_janitor_scan():
+    agent  = JanitorAgent(db_path=DB_PATH)
+    result = agent.scan_all()
+    # items 필드 제거 (요약만 반환)
+    summary = {
+        "scanned_at":   result["scanned_at"],
+        "total_issues": result["total_issues"],
+    }
+    for key in ("duplicate_words", "incomplete_words", "broken_questions",
+                "broken_templates", "low_quality_questions"):
+        summary[key] = result[key]["count"]
+    return jsonify(summary)
+
+
+@app.route("/api/janitor/scan/detail")
+def api_janitor_scan_detail():
+    agent  = JanitorAgent(db_path=DB_PATH)
+    result = agent.scan_all()
+    return jsonify(result)
+
+
+@app.route("/api/janitor/fix", methods=["POST"])
+def api_janitor_fix():
+    agent  = JanitorAgent(db_path=DB_PATH)
+    scan   = agent.scan_all()
+    fixed  = agent.fix_all(scan)
+    return jsonify({"success": True, **fixed, "db": _db_stats()})
+
+
+@app.route("/api/janitor/health")
+def api_janitor_health():
+    agent = JanitorAgent(db_path=DB_PATH)
+    return jsonify(agent.health_report())
 
 
 # ── 실행 ──────────────────────────────────────────────
