@@ -11,24 +11,20 @@ import base64
 import re
 from pathlib import Path
 
+# 프로젝트 루트를 sys.path에 추가하여 ontology 임포트 가능하게 함
+import sys
+_ROOT = Path(__file__).parent.parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from backend.core.ontology import LEVEL_TO_GRADE, GRADE_TO_LEVEL, VALID_POS, VALID_LEVELS
+
 # google-generativeai 없어도 동작
 try:
     import google.generativeai as genai
     _GENAI_AVAILABLE = True
 except ImportError:
     _GENAI_AVAILABLE = False
-
-
-# ── 레벨 매핑 ─────────────────────────────────────────
-LEVEL_TO_GRADE = {
-    "중1": 1, "중2": 2, "중3": 3,
-    "고1": 4, "고2": 5, "고3": 6,
-    "수능": 7, "수능고급": 8,
-}
-GRADE_TO_LEVEL = {v: k for k, v in LEVEL_TO_GRADE.items()}
-
-VALID_POS = {"noun", "verb", "adjective", "adverb"}
-VALID_LEVELS = set(LEVEL_TO_GRADE.keys())
 
 
 class AIClient:
@@ -251,7 +247,83 @@ class AIClient:
 
         return result
 
-    # ── 7. 자연스러운 단어 조합 선택 ──────────────────
+    # ── 7. 교재 문제 일괄 분석 ────────────────────────
+    def analyze_questions_batch(self, questions: list[dict],
+                                valid_grammar_points: list[str]) -> list[dict]:
+        """
+        추출된 원본 문제들의 문법 포인트 + 정답을 AI로 일괄 분석.
+
+        입력: [{"stem": ..., "choices": [...]}, ...]
+        반환: [{"grammar_point": ..., "answer": ..., "answer_idx": int}, ...]
+        폴백: grammar_point=None, answer=choices[0], answer_idx=0
+        """
+        def _fallback(qs):
+            return [{"grammar_point": None,
+                     "answer": q["choices"][0] if q.get("choices") else None,
+                     "answer_idx": 0}
+                    for q in qs]
+
+        if not self.available or not questions:
+            return _fallback(questions)
+
+        results: list[dict] = []
+        CHUNK = 8  # API 호출 1번에 최대 8문제
+
+        for start in range(0, len(questions), CHUNK):
+            chunk = questions[start: start + CHUNK]
+            gp_sample = ", ".join(valid_grammar_points[:25])
+            q_list = [{"n": j + 1, "stem": q["stem"], "choices": q["choices"]}
+                      for j, q in enumerate(chunk)]
+
+            prompt = (
+                "다음 영어 문법 문제들을 분석하세요.\n\n"
+                f"문법 포인트 후보: {gp_sample}\n\n"
+                f"문제 목록:\n{json.dumps(q_list, ensure_ascii=False)}\n\n"
+                "각 문제의 문법 포인트와 정답을 JSON으로 반환:\n"
+                '{"results": [{"n": 1, "grammar_point": "현재완료", '
+                '"answer": "has", "answer_idx": 0}, ...]}\n'
+                "answer_idx는 choices 배열의 0-based 인덱스.\n"
+                "grammar_point가 후보에 없으면 null.\n"
+                "JSON만:"
+            )
+
+            raw = self._call(prompt)
+            chunk_results: list[dict] = []
+
+            if raw:
+                try:
+                    m = re.search(r"\{.*\}", raw, re.DOTALL)
+                    if m:
+                        parsed = json.loads(m.group())
+                        for item in parsed.get("results", []):
+                            n = item.get("n", 0) - 1
+                            if 0 <= n < len(chunk):
+                                gp = item.get("grammar_point")
+                                if gp not in valid_grammar_points:
+                                    gp = None
+                                chunk_results.append({
+                                    "grammar_point": gp,
+                                    "answer":       item.get("answer"),
+                                    "answer_idx":   int(item.get("answer_idx", 0)),
+                                })
+                except Exception:
+                    pass
+
+            # 파싱 실패한 자리는 폴백으로 채움
+            while len(chunk_results) < len(chunk):
+                j = len(chunk_results)
+                q = chunk[j]
+                chunk_results.append({
+                    "grammar_point": None,
+                    "answer": q["choices"][0] if q.get("choices") else None,
+                    "answer_idx": 0,
+                })
+
+            results.extend(chunk_results)
+
+        return results
+
+    # ── 8. 자연스러운 단어 조합 선택 ──────────────────
     def select_combo(self, template: str, candidates: dict[str, list[str]]) -> dict[str, str]:
         """
         템플릿 슬롯에 들어갈 가장 자연스러운 단어 조합 선택.

@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>스와이프 검수 — 영어 문제은행</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --pass:    #22c55e;
+      --nope:    #ef4444;
+      --skip:    #94a3b8;
+      --bg:      #0f172a;
+      --surface: #1e293b;
+      --border:  #334155;
+      --text:    #f1f5f9;
+      --muted:   #94a3b8;
+      --accent:  #6366f1;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px 16px 32px;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* ── 헤더 ── */
+    .header {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .back-link {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .back-link:hover { color: var(--text); }
+    .session-stats {
+      display: flex;
+      gap: 14px;
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .s-pass { color: var(--pass); }
+    .s-nope { color: var(--nope); }
+    .s-skip { color: var(--skip); }
+
+    /* ── 모드 토글 ── */
+    .mode-toggle {
+      display: flex;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 3px;
+      margin-bottom: 14px;
+    }
+    .mode-btn {
+      flex: 1;
+      padding: 6px 20px;
+      border-radius: 7px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .mode-btn.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* ── 진행바 ── */
+    .progress-wrap {
+      width: 100%;
+      max-width: 480px;
+      background: var(--surface);
+      border-radius: 99px;
+      height: 6px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #a855f7);
+      border-radius: 99px;
+      transition: width 0.4s ease;
+      min-width: 0%;
+    }
+    .progress-text {
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 14px;
+      font-weight: 600;
+    }
+
+    /* ── 스트릭 배너 ── */
+    .streak-banner {
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
+      padding: 7px 20px;
+      border-radius: 99px;
+      margin-bottom: 12px;
+      opacity: 0;
+      transform: scale(0.7) translateY(-8px);
+      transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      pointer-events: none;
+    }
+    .streak-banner.show {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+
+    /* ── 카드 스택 ── */
+    .card-stack {
+      position: relative;
+      width: 100%;
+      max-width: 480px;
+      height: 420px;
+      margin-bottom: 28px;
+      touch-action: none;
+    }
+
+    .q-card {
+      position: absolute;
+      inset: 0;
+      background: var(--surface);
+      border-radius: 20px;
+      padding: 24px 22px 20px;
+      border: 1px solid var(--border);
+      will-change: transform;
+      transform-origin: center bottom;
+      overflow: hidden;
+    }
+
+    .q-card.behind-1 {
+      transform: scale(0.96) translateY(8px);
+      z-index: 1;
+      pointer-events: none;
+    }
+    .q-card.behind-2 {
+      transform: scale(0.92) translateY(16px);
+      z-index: 0;
+      pointer-events: none;
+    }
+    .q-card.top {
+      z-index: 10;
+      cursor: grab;
+      transition: box-shadow 0.2s;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .q-card.top:active { cursor: grabbing; }
+
+    /* 드래그 중 배경 카드 올라오는 효과 */
+    .q-card.behind-1.rising {
+      transition: transform 0.1s ease;
+      transform: scale(0.98) translateY(4px);
+    }
+
+    /* ── PASS / NOPE 스탬프 ── */
+    .stamp {
+      position: absolute;
+      top: 24px;
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: 3px;
+      border-width: 4px;
+      border-style: solid;
+      padding: 5px 14px;
+      border-radius: 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.05s;
+    }
+    .stamp-pass {
+      right: 20px;
+      color: var(--pass);
+      border-color: var(--pass);
+      transform: rotate(15deg);
+      text-shadow: 0 0 12px rgba(34,197,94,0.4);
+    }
+    .stamp-nope {
+      left: 20px;
+      color: var(--nope);
+      border-color: var(--nope);
+      transform: rotate(-15deg);
+      text-shadow: 0 0 12px rgba(239,68,68,0.4);
+    }
+
+    /* ── 카드 콘텐츠: 문제 ── */
+    .card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 99px;
+    }
+    .badge-grammar { background: #312e81; color: #a5b4fc; }
+    .badge-level   { background: #1e3a5f; color: #60a5fa; }
+    .badge-type    { background: #1f2937; color: #9ca3af; }
+    .quality-score {
+      margin-left: auto;
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .q-stem {
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.65;
+      margin-bottom: 18px;
+      color: #f1f5f9;
+      word-break: break-word;
+    }
+    .q-stem u {
+      text-decoration: underline;
+      text-decoration-color: #475569;
+      text-underline-offset: 3px;
+    }
+
+    .choices {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .choice {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 13px;
+      background: #0f172a;
+      border-radius: 9px;
+      border: 1.5px solid var(--border);
+      font-size: 13.5px;
+      color: var(--text);
+    }
+    .choice.correct {
+      border-color: var(--pass);
+      background: rgba(34, 197, 94, 0.08);
+      color: #4ade80;
+      font-weight: 700;
+    }
+    .choice-num {
+      font-size: 11px;
+      font-weight: 800;
+      color: #64748b;
+      min-width: 18px;
+    }
+    .choice.correct .choice-num { color: #4ade80; }
+
+    /* ── 카드 콘텐츠: 단어 ── */
+    .word-main {
+      font-size: 38px;
+      font-weight: 900;
+      letter-spacing: -1px;
+      margin-bottom: 6px;
+      color: #f1f5f9;
+    }
+    .word-pos {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 20px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .word-meaning {
+      font-size: 22px;
+      font-weight: 700;
+      color: #e2e8f0;
+      margin-bottom: 14px;
+      line-height: 1.4;
+    }
+    .word-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .word-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+    .wm-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      min-width: 36px;
+    }
+    .word-divider {
+      width: 100%;
+      height: 1px;
+      background: var(--border);
+      margin: 16px 0;
+    }
+
+    /* ── 애니메이션 ── */
+    @keyframes flyRight {
+      0%   { transform: translateX(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateX(140%) rotate(28deg); opacity: 0; }
+    }
+    @keyframes flyLeft {
+      0%   { transform: translateX(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateX(-140%) rotate(-28deg); opacity: 0; }
+    }
+    @keyframes flyUp {
+      0%   { transform: translateY(0) scale(1); opacity: 1; }
+      100% { transform: translateY(-50%) scale(0.85); opacity: 0; }
+    }
+    @keyframes popIn {
+      0%   { transform: scale(0.92) translateY(16px); opacity: 0.6; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .fly-right { animation: flyRight 0.38s ease forwards; }
+    .fly-left  { animation: flyLeft  0.38s ease forwards; }
+    .fly-up    { animation: flyUp    0.28s ease forwards; }
+    .pop-in    { animation: popIn    0.3s ease forwards;  }
+
+    /* ── 버튼 ── */
+    .action-row {
+      display: flex;
+      gap: 18px;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 18px;
+      transition: opacity 0.3s;
+    }
+    .action-btn {
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s;
+      flex-shrink: 0;
+    }
+    .action-btn:hover  { transform: scale(1.12); }
+    .action-btn:active { transform: scale(0.92); }
+
+    .btn-nope {
+      width: 66px; height: 66px; font-size: 26px;
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--nope);
+      border-color: rgba(239, 68, 68, 0.25);
+      box-shadow: 0 4px 20px rgba(239, 68, 68, 0.12);
+    }
+    .btn-nope:hover {
+      background: rgba(239, 68, 68, 0.22);
+      box-shadow: 0 6px 28px rgba(239, 68, 68, 0.28);
+    }
+
+    .btn-skip {
+      width: 50px; height: 50px; font-size: 20px;
+      background: rgba(148, 163, 184, 0.08);
+      color: var(--skip);
+      border-color: rgba(148, 163, 184, 0.18);
+    }
+    .btn-skip:hover { background: rgba(148, 163, 184, 0.15); }
+
+    .btn-pass {
+      width: 66px; height: 66px; font-size: 26px;
+      background: rgba(34, 197, 94, 0.12);
+      color: var(--pass);
+      border-color: rgba(34, 197, 94, 0.25);
+      box-shadow: 0 4px 20px rgba(34, 197, 94, 0.12);
+    }
+    .btn-pass:hover {
+      background: rgba(34, 197, 94, 0.22);
+      box-shadow: 0 6px 28px rgba(34, 197, 94, 0.28);
+    }
+
+    /* ── 키보드 힌트 ── */
+    .kb-hints {
+      display: flex;
+      gap: 20px;
+      font-size: 11.5px;
+      color: var(--muted);
+      transition: opacity 0.3s;
+    }
+    .kb-hints kbd {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 10px;
+      font-family: inherit;
+      color: #cbd5e1;
+    }
+
+    /* ── 상태 카드 ── */
+    .state-card {
+      position: absolute;
+      inset: 0;
+      background: var(--surface);
+      border-radius: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      z-index: 20;
+    }
+    .state-icon { font-size: 52px; }
+    .state-title {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .state-sub { font-size: 13px; color: var(--muted); }
+
+    /* ── 완료 화면 ── */
+    .done-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .done-overlay.show { display: flex; }
+    .done-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px 32px;
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+    .done-emoji { font-size: 72px; margin-bottom: 12px; line-height: 1; }
+    .done-title { font-size: 26px; font-weight: 900; margin-bottom: 6px; }
+    .done-sub   { font-size: 14px; color: var(--muted); margin-bottom: 28px; }
+    .done-stats {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-bottom: 28px;
+    }
+    .done-stat {
+      background: #0f172a;
+      border-radius: 14px;
+      padding: 18px 20px;
+      flex: 1;
+    }
+    .done-stat-val   { font-size: 34px; font-weight: 900; line-height: 1; }
+    .done-stat-label { font-size: 11px; color: var(--muted); margin-top: 6px; font-weight: 700; }
+    .done-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .done-btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .done-btn:hover { opacity: 0.85; }
+    .done-btn-primary { background: var(--accent); color: #fff; }
+    .done-btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    /* ── 파티클 ── */
+    .particle {
+      position: fixed;
+      pointer-events: none;
+      z-index: 200;
+      font-size: 24px;
+      animation: particleFly 1s ease forwards;
+    }
+    @keyframes particleFly {
+      0%   { transform: translateY(0) scale(1); opacity: 1; }
+      100% { transform: translateY(-200px) scale(0.5); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <a href="/admin" class="back-link">← 관리자</a>
+  <div class="session-stats">
+    <span class="s-pass">✓ <span id="cnt-pass">0</span></span>
+    <span class="s-nope">✗ <span id="cnt-nope">0</span></span>
+    <span class="s-skip">↷ <span id="cnt-skip">0</span></span>
+  </div>
+</div>
+
+<!-- 모드 토글 -->
+<div class="mode-toggle">
+  <button class="mode-btn active" id="mode-q" onclick="switchMode('questions')">❓ 문제</button>
+  <button class="mode-btn"        id="mode-w" onclick="switchMode('words')">📝 단어</button>
+</div>
+
+<!-- 진행바 -->
+<div class="progress-wrap">
+  <div class="progress-bar" id="prog-bar" style="width:0%"></div>
+</div>
+<div class="progress-text" id="prog-text">불러오는 중...</div>
+
+<!-- 스트릭 배너 -->
+<div class="streak-banner" id="streak-banner">🔥 연속!</div>
+
+<!-- 카드 스택 -->
+<div class="card-stack" id="card-stack">
+  <div class="state-card">
+    <div class="state-icon">⏳</div>
+    <div class="state-title">불러오는 중...</div>
+  </div>
+</div>
+
+<!-- 액션 버튼 -->
+<div class="action-row" id="action-row">
+  <button class="action-btn btn-nope" onclick="doNope()" title="미통과 ←">✕</button>
+  <button class="action-btn btn-skip" onclick="doSkip()" title="나중에 ↑">↷</button>
+  <button class="action-btn btn-pass" onclick="doPass()" title="통과 →">✓</button>
+</div>
+
+<!-- 키보드 힌트 -->
+<div class="kb-hints" id="kb-hints">
+  <span><kbd>←</kbd> 미통과</span>
+  <span><kbd>↑</kbd> 나중에</span>
+  <span><kbd>→</kbd> 통과</span>
+</div>
+
+<!-- 완료 오버레이 -->
+<div class="done-overlay" id="done-overlay">
+  <div class="done-box">
+    <div class="done-emoji" id="done-emoji">🎉</div>
+    <div class="done-title" id="done-title">배치 완료!</div>
+    <div class="done-sub"   id="done-sub">이 배치의 모든 항목을 검토했습니다.</div>
+    <div class="done-stats">
+      <div class="done-stat">
+        <div class="done-stat-val s-pass" id="done-pass">0</div>
+        <div class="done-stat-label">통과</div>
+      </div>
+      <div class="done-stat">
+        <div class="done-stat-val s-nope" id="done-nope">0</div>
+        <div class="done-stat-label">미통과</div>
+      </div>
+      <div class="done-stat">
+        <div class="done-stat-val s-skip" id="done-skip">0</div>
+        <div class="done-stat-label">건너뜀</div>
+      </div>
+    </div>
+    <div class="done-actions">
+      <button class="done-btn done-btn-primary" onclick="nextBatch()">다음 배치 불러오기</button>
+      <button class="done-btn done-btn-ghost"   onclick="closeDone()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 상태 ────────────────────────────────────────────────────
+let mode     = 'questions';  // 'questions' | 'words'
+let queue    = [];
+let batchOffset = 0;
+let totalPending = 0;
+let globalDone   = 0;        // 세션 전체 처리 수
+
+let sessionPass = 0;
+let sessionNope = 0;
+let sessionSkip = 0;
+let streak      = 0;
+let bestStreak  = 0;
+
+let isAnimating = false;
+
+// ── 드래그 상태 ─────────────────────────────────────────────
+let dragActive = false;
+let dragStartX = 0;
+let dragCurX   = 0;
+
+// ── 초기화 ──────────────────────────────────────────────────
+async function init() {
+  await refreshStats();
+  await loadBatch();
+}
+
+async function refreshStats() {
+  try {
+    const r = await fetch('/api/stats');
+    const d = await r.json();
+    totalPending = mode === 'questions'
+      ? (d.questions_pending || 0)
+      : (d.words_pending     || 0);
+  } catch(e) {}
+}
+
+async function loadBatch(resetOffset = false) {
+  if (resetOffset) batchOffset = 0;
+
+  const stack = document.getElementById('card-stack');
+  stack.innerHTML = stateCardHtml('⏳', '불러오는 중...');
+  setControlsEnabled(false);
+
+  try {
+    const url = `/api/review/list/${mode}?verified=0&limit=20&offset=${batchOffset}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    queue = (d.items || []).slice(); // 복사
+
+    if (queue.length === 0) {
+      stack.innerHTML = stateCardHtml('🎊', '모두 완료!', '대기 중인 항목이 없습니다');
+      showDone(true);
+      return;
+    }
+
+    stack.innerHTML = '';
+    renderStack();
+    setControlsEnabled(true);
+  } catch(e) {
+    stack.innerHTML = stateCardHtml('❌', '오류', '서버에 연결할 수 없습니다');
+  }
+}
+
+// ── 모드 전환 ────────────────────────────────────────────────
+function switchMode(m) {
+  if (m === mode) return;
+  mode = m;
+  document.getElementById('mode-q').classList.toggle('active', m === 'questions');
+  document.getElementById('mode-w').classList.toggle('active', m === 'words');
+  sessionPass = sessionNope = sessionSkip = streak = globalDone = 0;
+  updateCounters();
+  refreshStats();
+  loadBatch(true);
+}
+
+// ── 카드 렌더링 ──────────────────────────────────────────────
+function renderStack() {
+  const stack = document.getElementById('card-stack');
+  stack.innerHTML = '';
+
+  if (queue.length === 0) { showDone(false); return; }
+
+  // 뒤쪽 그림자 카드 (최대 2장)
+  const ghosts = Math.min(queue.length - 1, 2);
+  for (let i = ghosts; i >= 1; i--) {
+    const el = makeCardEl(queue[i], i === 1 ? 'behind-1' : 'behind-2');
+    stack.appendChild(el);
+  }
+
+  // 맨 앞 카드
+  const top = makeCardEl(queue[0], 'top');
+  stack.appendChild(top);
+  attachDrag(top);
+}
+
+function makeCardEl(item, cls) {
+  const div = document.createElement('div');
+  div.className = `q-card ${cls}`;
+  div.dataset.id = item.id;
+  div.innerHTML = (mode === 'questions') ? renderQuestion(item) : renderWord(item);
+  return div;
+}
+
+function renderQuestion(item) {
+  let choices = [];
+  try { choices = JSON.parse(item.choices || '[]'); } catch(e) {}
+
+  const typeMap = { FIB_MCQ:'객관식', FIB_SA:'단답형', ERR_ID:'어법오류', WORDFORM:'어형변화' };
+  const qtype   = typeMap[item.q_type] || item.q_type || '-';
+
+  const qs = parseInt(item.quality_score || 8);
+  const qc = qs >= 9 ? '#4ade80' : qs >= 7 ? '#fbbf24' : '#f87171';
+
+  const choicesHtml = choices.length
+    ? choices.map((c, i) => {
+        const nums = ['①','②','③','④','⑤'];
+        const isCorrect = c === item.answer ||
+          c.replace(/^[①②③④⑤]\s*/,'').trim() === (item.answer || '').trim();
+        return `<div class="choice ${isCorrect ? 'correct' : ''}">
+          <span class="choice-num">${nums[i] || (i+1)}</span>
+          <span>${c}</span>
+        </div>`;
+      }).join('')
+    : `<div class="choice correct">
+        <span class="choice-num">답</span>
+        <span>${item.answer || '-'}</span>
+       </div>`;
+
+  const stemHtml = (item.stem || '')
+    .replace(/___+/g, '<u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u>');
+
+  return `
+    <div class="stamp stamp-pass">PASS</div>
+    <div class="stamp stamp-nope">NOPE</div>
+    <div class="card-meta">
+      <span class="badge badge-grammar">${item.grammar_point || '-'}</span>
+      <span class="badge badge-level">${item.level || '-'}</span>
+      <span class="badge badge-type">${qtype}</span>
+      <span class="quality-score" style="color:${qc}">★ ${qs}</span>
+    </div>
+    <div class="q-stem">${stemHtml}</div>
+    <div class="choices">${choicesHtml}</div>`;
+}
+
+function renderWord(item) {
+  const posMap = { noun:'명사', verb:'동사', adjective:'형용사', adverb:'부사' };
+  const posLabel = posMap[item.pos] || item.pos || '-';
+
+  return `
+    <div class="stamp stamp-pass">PASS</div>
+    <div class="stamp stamp-nope">NOPE</div>
+    <div class="card-meta">
+      <span class="badge badge-level">${item.level || '-'}</span>
+      <span class="badge badge-type">${posLabel}</span>
+      ${item.category ? `<span class="badge" style="background:#1a2e1a;color:#86efac;">${item.category}</span>` : ''}
+    </div>
+    <div class="word-main">${item.word || '-'}</div>
+    <div class="word-pos">${item.pos || ''}</div>
+    <div class="word-divider"></div>
+    <div class="word-meaning">${item.meaning_ko || '의미 없음'}</div>
+    <div class="word-meta">
+      ${item.source_book ? `<div class="word-meta-row">
+        <span class="wm-label">출처</span>
+        <span style="color:var(--muted);font-size:13px;">${item.source_book}</span>
+      </div>` : ''}
+      ${item.category ? `<div class="word-meta-row">
+        <span class="wm-label">분류</span>
+        <span style="font-size:13px;">${item.category}</span>
+      </div>` : ''}
+    </div>`;
+}
+
+// ── 드래그 ───────────────────────────────────────────────────
+function attachDrag(card) {
+  card.addEventListener('mousedown',  onDown);
+  card.addEventListener('touchstart', onDown, { passive: true });
+}
+
+function onDown(e) {
+  if (isAnimating) return;
+  dragActive = true;
+  const pt = e.touches ? e.touches[0] : e;
+  dragStartX = pt.clientX;
+  dragCurX   = 0;
+
+  document.addEventListener('mousemove',  onMove);
+  document.addEventListener('mouseup',    onUp);
+  document.addEventListener('touchmove',  onMove, { passive: true });
+  document.addEventListener('touchend',   onUp);
+}
+
+function onMove(e) {
+  if (!dragActive) return;
+  const pt   = e.touches ? e.touches[0] : e;
+  dragCurX   = pt.clientX - dragStartX;
+
+  const card = document.querySelector('.q-card.top');
+  if (!card) return;
+
+  const rot     = dragCurX * 0.07;
+  card.style.transform = `translateX(${dragCurX}px) rotate(${rot}deg)`;
+
+  const ratio = Math.min(Math.abs(dragCurX) / 100, 1);
+  card.querySelector('.stamp-pass').style.opacity = dragCurX > 0 ? ratio : 0;
+  card.querySelector('.stamp-nope').style.opacity = dragCurX < 0 ? ratio : 0;
+
+  // 뒤 카드 살짝 올라오기
+  const behind = document.querySelector('.q-card.behind-1');
+  if (behind) {
+    const rise = Math.min(ratio, 1);
+    behind.style.transform = `scale(${0.96 + rise * 0.04}) translateY(${8 - rise * 8}px)`;
+  }
+}
+
+function onUp() {
+  if (!dragActive) return;
+  dragActive = false;
+
+  document.removeEventListener('mousemove',  onMove);
+  document.removeEventListener('mouseup',    onUp);
+  document.removeEventListener('touchmove',  onMove);
+  document.removeEventListener('touchend',   onUp);
+
+  const THRESHOLD = 90;
+  if      (dragCurX >  THRESHOLD) doPass();
+  else if (dragCurX < -THRESHOLD) doNope();
+  else                             resetTopCard();
+}
+
+function resetTopCard() {
+  const card = document.querySelector('.q-card.top');
+  if (!card) return;
+  card.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
+  card.style.transform  = '';
+  card.querySelector('.stamp-pass').style.opacity = 0;
+  card.querySelector('.stamp-nope').style.opacity = 0;
+
+  const behind = document.querySelector('.q-card.behind-1');
+  if (behind) {
+    behind.style.transition = 'transform 0.3s ease';
+    behind.style.transform  = 'scale(0.96) translateY(8px)';
+  }
+
+  setTimeout(() => {
+    card.style.transition   = '';
+    if (behind) behind.style.transition = '';
+  }, 320);
+}
+
+// ── 액션 ─────────────────────────────────────────────────────
+function doPass() {
+  if (isAnimating || queue.length === 0) return;
+  fireAction('pass');
+}
+function doNope() {
+  if (isAnimating || queue.length === 0) return;
+  fireAction('nope');
+}
+function doSkip() {
+  if (isAnimating || queue.length === 0) return;
+  if (queue.length === 1) { resetTopCard(); return; }
+  fireAction('skip');
+}
+
+function fireAction(type) {
+  isAnimating = true;
+  const item = queue[0];
+  const card = document.querySelector('.q-card.top');
+
+  if (card) {
+    if (type === 'pass') {
+      card.querySelector('.stamp-pass').style.opacity = 1;
+      card.style.transform = '';
+      card.classList.add('fly-right');
+    } else if (type === 'nope') {
+      card.querySelector('.stamp-nope').style.opacity = 1;
+      card.style.transform = '';
+      card.classList.add('fly-left');
+    } else {
+      card.style.transform = '';
+      card.classList.add('fly-up');
+    }
+  }
+
+  // API 호출
+  if (type === 'pass') {
+    fetch('/api/review/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table: mode, ids: [item.id] }),
+    }).catch(() => {});
+    sessionPass++;
+    streak++;
+    if (streak > bestStreak) bestStreak = streak;
+    globalDone++;
+    checkStreak();
+    spawnParticles('pass');
+  } else if (type === 'nope') {
+    fetch('/api/review/reject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table: mode, ids: [item.id] }),
+    }).catch(() => {});
+    sessionNope++;
+    streak = 0;
+    globalDone++;
+  } else {
+    const skipped = queue.shift();
+    queue.push(skipped);
+    sessionSkip++;
+  }
+
+  updateCounters();
+  updateProgress();
+
+  const delay = type === 'skip' ? 260 : 360;
+  setTimeout(() => {
+    if (type !== 'skip') {
+      queue.shift();
+      batchOffset++;
+    }
+    isAnimating = false;
+
+    if (queue.length === 0) {
+      document.getElementById('card-stack').innerHTML = '';
+      showDone(false);
+    } else {
+      renderStack();
+    }
+  }, delay);
+}
+
+// ── UI 헬퍼 ─────────────────────────────────────────────────
+function updateCounters() {
+  document.getElementById('cnt-pass').textContent = sessionPass;
+  document.getElementById('cnt-nope').textContent = sessionNope;
+  document.getElementById('cnt-skip').textContent = sessionSkip;
+}
+
+function updateProgress() {
+  const pct  = totalPending > 0 ? Math.min((globalDone / totalPending) * 100, 100) : 0;
+  document.getElementById('prog-bar').style.width = pct.toFixed(1) + '%';
+  const remain = Math.max(0, totalPending - globalDone);
+  document.getElementById('prog-text').textContent =
+    `${globalDone}개 완료 · 남은 ${mode === 'questions' ? '문제' : '단어'} ${remain}개`;
+}
+
+function setControlsEnabled(on) {
+  const ar  = document.getElementById('action-row');
+  const kb  = document.getElementById('kb-hints');
+  ar.style.opacity        = on ? '1' : '0.3';
+  ar.style.pointerEvents  = on ? ''  : 'none';
+  kb.style.opacity        = on ? '1' : '0.3';
+}
+
+function checkStreak() {
+  if (streak > 0 && streak % 5 === 0) {
+    const banner = document.getElementById('streak-banner');
+    banner.textContent = `🔥 ${streak}연속 통과!`;
+    banner.classList.add('show');
+    setTimeout(() => banner.classList.remove('show'), 2200);
+  }
+}
+
+function stateCardHtml(icon, title, sub = '') {
+  return `<div class="state-card">
+    <div class="state-icon">${icon}</div>
+    <div class="state-title">${title}</div>
+    ${sub ? `<div class="state-sub">${sub}</div>` : ''}
+  </div>`;
+}
+
+// ── 파티클 ──────────────────────────────────────────────────
+function spawnParticles(type) {
+  if (type !== 'pass') return;
+  const emojis = ['✨','⭐','🌟','💚','👍'];
+  for (let i = 0; i < 5; i++) {
+    setTimeout(() => {
+      const el  = document.createElement('div');
+      el.className = 'particle';
+      el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+      el.style.left = (40 + Math.random() * 20) + '%';
+      el.style.top  = '60%';
+      el.style.animationDelay = (Math.random() * 0.15) + 's';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 1100);
+    }, i * 50);
+  }
+}
+
+// ── 완료 화면 ────────────────────────────────────────────────
+function showDone(allEmpty) {
+  setControlsEnabled(false);
+
+  const emojis     = ['🎉','🏆','🔥','✨','💪'];
+  const totalDone  = sessionPass + sessionNope;
+  const passRate   = totalDone > 0 ? Math.round(sessionPass / totalDone * 100) : 0;
+
+  document.getElementById('done-emoji').textContent =
+    bestStreak >= 10 ? '🏆' : passRate >= 80 ? '🔥' : '🎉';
+  document.getElementById('done-title').textContent =
+    allEmpty ? '모두 완료!' : '배치 검수 완료!';
+  document.getElementById('done-sub').textContent =
+    allEmpty
+      ? `대기 중인 ${mode === 'questions' ? '문제' : '단어'}가 없습니다`
+      : `통과율 ${passRate}%  ·  최고 연속 ${bestStreak}개`;
+
+  document.getElementById('done-pass').textContent = sessionPass;
+  document.getElementById('done-nope').textContent = sessionNope;
+  document.getElementById('done-skip').textContent = sessionSkip;
+  document.getElementById('done-overlay').classList.add('show');
+}
+
+function nextBatch() {
+  document.getElementById('done-overlay').classList.remove('show');
+  setControlsEnabled(true);
+  loadBatch();
+}
+
+function closeDone() {
+  document.getElementById('done-overlay').classList.remove('show');
+}
+
+// ── 키보드 ───────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') { e.preventDefault(); doPass(); }
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); doNope(); }
+  if (e.key === 'ArrowUp' || e.key === ' ') { e.preventDefault(); doSkip(); }
+});
+
+// ── 시작 ─────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

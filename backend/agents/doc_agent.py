@@ -21,6 +21,7 @@ ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from backend.utils.ai_client import AIClient
+from backend.core.ontology import LEVEL_TO_GRADE
 
 # PyMuPDF 선택적 임포트
 try:
@@ -31,12 +32,6 @@ except ImportError:
 
 DB_PATH = ROOT / "backend" / "db" / "qbank.db"
 SCHEMA_SQL = ROOT / "backend" / "db" / "schema.sql"
-
-LEVEL_TO_GRADE = {
-    "중1": 1, "중2": 2, "중3": 3,
-    "고1": 4, "고2": 5, "고3": 6,
-    "수능": 7, "수능고급": 8,
-}
 
 # 품질 점수 기준
 QUALITY_THRESHOLD = 7
@@ -130,14 +125,139 @@ def parse_meaning_from_line(line: str) -> str:
     return ""
 
 
+# ── 문제 파싱 ────────────────────────────────────────
+
+def parse_questions_from_text(text: str) -> list[dict]:
+    """
+    텍스트에서 ①②③④⑤ 패턴으로 객관식 문제 블록 감지.
+
+    지원 레이아웃:
+      수직형:  stem 줄 / ① choice / ② choice / ...
+      수평형:  stem 줄 / ① choice ② choice ③ choice ...
+      혼합형:  지시문 + stem + choices
+
+    반환:
+      [{"raw_stem": str, "choices": list[str], "has_blank": bool}, ...]
+    """
+    CIRCLES = "①②③④⑤"
+    questions: list[dict] = []
+
+    # 줄 단위로 처리
+    lines = [l.rstrip() for l in text.splitlines()]
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        # ① 이 포함된 줄 발견 → 보기 시작점
+        if "①" not in line:
+            i += 1
+            continue
+
+        # ── stem 수집: 현재 줄 앞에서 영어가 있는 줄을 역방향으로 수집 ──
+        stem_lines: list[str] = []
+        for j in range(i - 1, max(-1, i - 8), -1):
+            prev = lines[j].strip()
+            if not prev:
+                if stem_lines:
+                    break       # 빈 줄이 나오면 수집 종료
+                continue
+            # circled-number가 있는 줄은 이전 문제의 보기 → 건너뜀
+            if any(c in prev for c in CIRCLES):
+                break
+            if re.search(r"[a-zA-Z]", prev):
+                # 질문 번호만 있는 줄 건너뜀 (예: "3.")
+                if re.fullmatch(r"\d+[.)]\s*", prev):
+                    continue
+                stem_lines.insert(0, prev)
+            elif stem_lines:
+                break           # 한글만인 줄이 중간에 나오면 종료
+
+        # ── stem이 없으면 ERR_ID 형식인지 확인 ──────────
+        # ERR_ID: 보기 자체가 영어 문장 (지시문은 한글)
+        if not stem_lines:
+            # ①이 있는 줄의 텍스트가 영어 문장이면 → ERR_ID
+            first_choice_text = re.sub(r"^[①②③④⑤]\s*", "", line).strip()
+            if re.search(r"[A-Z][a-z]", first_choice_text):
+                # 지시문을 stem 대신 사용 (앞 한글 줄)
+                for j in range(i - 1, max(-1, i - 4), -1):
+                    prev = lines[j].strip()
+                    if re.search(r"[가-힣]", prev) and len(prev) > 2:
+                        stem_lines = [prev]
+                        break
+                if not stem_lines:
+                    stem_lines = ["어법상 틀린 것을 고르시오."]  # 기본 지시문
+            else:
+                i += 1
+                continue
+
+        stem_raw = " ".join(stem_lines)
+        # 줄 맨 앞 번호·괄호 제거
+        stem_raw = re.sub(r"^\s*\d+[.)\]]\s*", "", stem_raw).strip()
+        # 한글 지시문 제거 — 영어 stem 앞에 붙은 경우만 (ERR_ID 한글 stem은 유지)
+        if re.search(r"[a-zA-Z]", stem_raw):
+            stem_raw = re.sub(
+                r"(?:다음|보기|밑줄|빈칸|어법|아래)[^\n]{0,40}(?:고르시오|쓰시오|찾으시오)[^\n]*",
+                "", stem_raw,
+            ).strip()
+        # 빈칸 정규화
+        stem_raw = re.sub(r"_{2,}", "_____", stem_raw)
+        stem_raw = re.sub(r"\(\s{2,}\)", "_____", stem_raw)
+
+        if not stem_raw:
+            i += 1
+            continue
+        # 한글 지시문만 있는 경우(ERR_ID): 보기에 영어가 있으면 허용
+        if not re.search(r"[a-zA-Z]", stem_raw):
+            first_choice_text = re.sub(r"^[①②③④⑤]\s*", "", line).strip()
+            if not re.search(r"[A-Za-z]", first_choice_text):
+                i += 1
+                continue
+
+        # ── choices 수집: 현재 줄부터 ②③④⑤ 끝까지 ──────────────────
+        choice_text_parts: list[str] = []
+        k = i
+        while k < min(i + 10, len(lines)):
+            l = lines[k].strip()
+            if any(c in l for c in CIRCLES):
+                choice_text_parts.append(l)
+            elif choice_text_parts and l:
+                # 보기 뒤 일반 텍스트가 나오면 종료
+                break
+            k += 1
+
+        all_choices_text = " ".join(choice_text_parts)
+        choices = re.findall(r"[①②③④⑤]\s*([^①②③④⑤\n]{1,80})", all_choices_text)
+        choices = [c.strip() for c in choices if c.strip()]
+
+        if len(choices) >= 2:
+            questions.append({
+                "raw_stem": stem_raw,
+                "choices":  choices[:5],
+                "has_blank": "_____" in stem_raw,
+            })
+
+        i = k  # 보기 이후 줄부터 재개
+
+    return questions
+
+
 # ── DB 초기화 및 저장 ─────────────────────────────────
 
 def ensure_db(db_path: Path):
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
-    # 테이블이 없을 때만 스키마 적용 (IF NOT EXISTS 사용)
     with open(SCHEMA_SQL, encoding="utf-8") as f:
         conn.executescript(f.read())
+    # 스키마 진화: 신규 컬럼 추가 (이미 있으면 무시)
+    for stmt in [
+        "ALTER TABLE templates ADD COLUMN grammar_answer  TEXT",
+        "ALTER TABLE templates ADD COLUMN grammar_choices TEXT",
+    ]:
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     conn.close()
 
@@ -374,6 +494,128 @@ class DocAgent:
             "skipped": stats["skipped"], "low_quality": stats["low_quality"],
         }})
         return stats
+
+    # ── 문제 추출 모드 ────────────────────────────────
+    def extract_questions(
+        self,
+        file_path: str | Path,
+        level: str,
+        book_title: str,
+        progress_callback=None,
+    ) -> dict:
+        """
+        PDF/이미지/텍스트 파일에서 문법 문제를 추출.
+        DB 저장 없음 — 원본 추출 + AI 분석만 수행.
+
+        반환:
+        {
+          "questions": [
+            {
+              "raw_stem":     원본 문장 (빈칸=_____),
+              "choices":      보기 리스트,
+              "has_blank":    빈칸 여부,
+              "grammar_point": AI 분류 (없으면 None),
+              "answer":       AI 정답 제안 (없으면 None),
+              "answer_idx":   정답 인덱스 (0-based),
+              "level":        사용자 지정 레벨,
+              "source_book":  교재명,
+            }, ...
+          ],
+          "total": int,
+          "pages": int,
+          "ai_used": bool,
+        }
+        """
+        def emit(e: dict):
+            if progress_callback:
+                progress_callback(e)
+
+        file_path = Path(file_path)
+        print(f"\n[DOC-IN Q모드] {file_path.name} / {level}")
+
+        # ── 1. 텍스트 추출 ────────────────────────────
+        emit({"type": "step", "step": 1, "total_steps": 3,
+              "message": "파일에서 텍스트 추출 중..."})
+        raw_texts: list[str] = []
+        suffix = file_path.suffix.lower()
+
+        if suffix == ".pdf":
+            pages = extract_text_from_pdf(file_path)
+            if pages:
+                raw_texts = pages
+                print(f"  텍스트 PDF {len(pages)}페이지 추출")
+            else:
+                print("  스캔 PDF → Vision 처리")
+                tmp_dir = ROOT / "data" / "tmp_images"
+                for img in extract_images_from_pdf(file_path, tmp_dir):
+                    text = self.ai.read_image(str(img))
+                    if text:
+                        raw_texts.append(text)
+        elif suffix in {".png", ".jpg", ".jpeg", ".webp"}:
+            text = self.ai.read_image(str(file_path))
+            if text:
+                raw_texts = [text]
+        elif suffix == ".txt":
+            raw_texts = [file_path.read_text(encoding="utf-8")]
+
+        if not raw_texts:
+            emit({"type": "done", "total": 0, "pages": 0})
+            return {"questions": [], "total": 0, "pages": 0, "ai_used": False}
+
+        # ── 2. 문제 블록 감지 ─────────────────────────
+        emit({"type": "step", "step": 2, "total_steps": 3,
+              "message": "문제 패턴 감지 중..."})
+        raw_qs: list[dict] = []
+        for page_text in raw_texts:
+            raw_qs.extend(parse_questions_from_text(page_text))
+
+        print(f"  {len(raw_qs)}개 문제 블록 감지")
+        emit({"type": "progress", "detected": len(raw_qs)})
+
+        if not raw_qs:
+            emit({"type": "done", "total": 0, "pages": len(raw_texts)})
+            return {"questions": [], "total": 0, "pages": len(raw_texts), "ai_used": False}
+
+        # ── 3. AI 문법 포인트 + 정답 분류 ────────────
+        emit({"type": "step", "step": 3, "total_steps": 3,
+              "message": f"AI 분석 중... ({len(raw_qs)}문제)"})
+
+        from backend.core.ontology import VALID_GRAMMAR_POINTS
+        analyzed: list[dict] = [{"grammar_point": None, "answer": None, "answer_idx": 0}
+                                 for _ in raw_qs]
+        ai_used = False
+
+        if self.ai.available:
+            ai_input = [{"stem": q["raw_stem"], "choices": q["choices"]}
+                        for q in raw_qs]
+            analyzed = self.ai.analyze_questions_batch(
+                ai_input, list(VALID_GRAMMAR_POINTS)
+            )
+            ai_used = True
+            print("  AI 분석 완료")
+
+        # ── 결합 ──────────────────────────────────────
+        result: list[dict] = []
+        for raw_q, ana in zip(raw_qs, analyzed):
+            result.append({
+                "raw_stem":      raw_q["raw_stem"],
+                "choices":       raw_q["choices"],
+                "has_blank":     raw_q["has_blank"],
+                "grammar_point": ana.get("grammar_point"),
+                "answer":        ana.get("answer"),
+                "answer_idx":    int(ana.get("answer_idx", 0)),
+                "level":         level,
+                "source_book":   book_title,
+            })
+
+        emit({"type": "done", "total": len(result), "pages": len(raw_texts)})
+        print(f"  추출 완료: {len(result)}개")
+        return {
+            "questions": result,
+            "total":     len(result),
+            "pages":     len(raw_texts),
+            "ai_used":   ai_used,
+        }
 
     def _print_report(self, stats: dict, book_title: str):
         print(f"{'─'*55}")

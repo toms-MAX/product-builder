@@ -81,28 +81,33 @@ FALLBACK_WORDS = {
         {"word": "algorithm",     "meaning_ko": "알고리즘",     "grade": 8},
     ],
     "OBJECT_THING": [
-        # 중1~중2
+        # 중1~중2 (직접목적어로 자연스러운 것만)
         {"word": "task",          "meaning_ko": "과제",         "grade": 1},
         {"word": "plan",          "meaning_ko": "계획",         "grade": 1},
         {"word": "letter",        "meaning_ko": "편지",         "grade": 1},
+        {"word": "homework",      "meaning_ko": "숙제",         "grade": 1},
         {"word": "message",       "meaning_ko": "메시지",       "grade": 2},
-        {"word": "gift",          "meaning_ko": "선물",         "grade": 2},
+        {"word": "question",      "meaning_ko": "질문",         "grade": 2},
+        {"word": "test",          "meaning_ko": "시험",         "grade": 2},
         # 중3~고1
         {"word": "report",        "meaning_ko": "보고서",       "grade": 3},
         {"word": "document",      "meaning_ko": "문서",         "grade": 3},
+        {"word": "problem",       "meaning_ko": "문제",         "grade": 3},
         {"word": "project",       "meaning_ko": "프로젝트",     "grade": 4},
-        {"word": "problem",       "meaning_ko": "문제",         "grade": 4},
         {"word": "goal",          "meaning_ko": "목표",         "grade": 4},
         {"word": "result",        "meaning_ko": "결과",         "grade": 4},
+        {"word": "assignment",    "meaning_ko": "과제",         "grade": 4},
         # 고2~고3
         {"word": "experiment",    "meaning_ko": "실험",         "grade": 5},
         {"word": "proposal",      "meaning_ko": "제안",         "grade": 5},
+        {"word": "analysis",      "meaning_ko": "분석",         "grade": 5},
         {"word": "contract",      "meaning_ko": "계약",         "grade": 6},
-        {"word": "hypothesis",    "meaning_ko": "가설",         "grade": 6},
+        {"word": "strategy",      "meaning_ko": "전략",         "grade": 6},
+        {"word": "policy",        "meaning_ko": "정책",         "grade": 6},
         # 수능
-        {"word": "methodology",   "meaning_ko": "방법론",       "grade": 7},
-        {"word": "paradigm",      "meaning_ko": "패러다임",     "grade": 7},
-        {"word": "framework",     "meaning_ko": "체계",         "grade": 8},
+        {"word": "evidence",      "meaning_ko": "증거",         "grade": 7},
+        {"word": "outcome",       "meaning_ko": "결과",         "grade": 7},
+        {"word": "criterion",     "meaning_ko": "기준",         "grade": 8},
     ],
     "OBJECT_PERSON": [
         {"word": "student",       "meaning_ko": "학생",         "grade": 1},

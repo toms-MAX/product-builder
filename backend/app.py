@@ -29,6 +29,7 @@ from backend.agents.review_agent    import ReviewAgent
 from backend.agents.ai_review_agent import AIReviewAgent
 from backend.agents.janitor_agent   import JanitorAgent
 from backend.agents.doc_agent       import ensure_db
+from backend.utils.transform_engine import transform_batch
 
 DB_PATH     = ROOT / "backend" / "db" / "qbank.db"
 UPLOAD_DIR  = ROOT / "data" / "uploads"
@@ -67,6 +68,10 @@ def index():
 @app.route("/admin")
 def admin():
     return send_from_directory(FRONTEND, "admin.html")
+
+@app.route("/swipe")
+def swipe():
+    return send_from_directory(FRONTEND, "swipe.html")
 
 @app.route("/<path:path>")
 def static_files(path):
@@ -175,6 +180,98 @@ def api_doc_in_stream():
             "X-Accel-Buffering": "no",   # Nginx 버퍼링 비활성화
         },
     )
+
+
+# ── DOC-IN: 문제 추출 ────────────────────────────────
+@app.route("/api/doc-in/extract-questions", methods=["POST"])
+def api_extract_questions():
+    """PDF/이미지에서 문법 문제를 추출하여 반환 (DB 저장 없음)."""
+    if "file" not in request.files:
+        return jsonify({"error": "파일이 없습니다."}), 400
+
+    file      = request.files["file"]
+    level     = request.form.get("level", "고1")
+    book      = request.form.get("book_title", "미분류")
+
+    if not file.filename:
+        return jsonify({"error": "파일명이 없습니다."}), 400
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXT:
+        return jsonify({"error": f"지원하지 않는 형식: {ext}"}), 400
+
+    filename  = secure_filename(file.filename)
+    save_path = UPLOAD_DIR / filename
+    file.save(str(save_path))
+
+    try:
+        agent  = DocAgent(db_path=DB_PATH)
+        result = agent.extract_questions(str(save_path), level=level, book_title=book)
+        return jsonify({
+            "success":  True,
+            "total":    result["total"],
+            "pages":    result["pages"],
+            "ai_used":  result["ai_used"],
+            "questions": result["questions"],
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── DOC-IN: 변환 + DB 저장 ───────────────────────────
+@app.route("/api/doc-in/transform", methods=["POST"])
+def api_transform_questions():
+    """
+    추출된 원본 문제 목록을 저작권 안전 버전으로 변환하고 DB에 저장.
+
+    요청 body:
+      { "questions": [...extract_questions 결과...] }
+
+    반환:
+      { "saved": int, "skipped": int, "results": [...] }
+    """
+    data      = request.json or {}
+    questions = data.get("questions", [])
+    if not questions:
+        return jsonify({"error": "questions 필드가 비어 있습니다."}), 400
+
+    transformed = transform_batch(questions, DB_PATH)
+
+    if not transformed:
+        return jsonify({"saved": 0, "skipped": len(questions), "results": []}), 200
+
+    # DB 저장
+    conn = sqlite3.connect(DB_PATH)
+    saved = 0
+    try:
+        for q in transformed:
+            try:
+                conn.execute(
+                    """INSERT OR IGNORE INTO questions
+                         (question_id, grammar_point, level, q_type, stem,
+                          choices, answer, explanation, tags,
+                          quality_score, verified, source, created_at, used_count)
+                       VALUES
+                         (:question_id, :grammar_point, :level, :q_type, :stem,
+                          :choices, :answer, :explanation, :tags,
+                          :quality_score, :verified, :source, :created_at, :used_count)""",
+                    q,
+                )
+                saved += 1
+            except Exception:
+                pass
+        conn.commit()
+    finally:
+        conn.close()
+
+    skipped = len(questions) - len(transformed)
+    return jsonify({
+        "success": True,
+        "saved":   saved,
+        "skipped": skipped + (len(transformed) - saved),
+        "results": transformed,
+        "db":      _db_stats(),
+    })
 
 
 # ── GEN ───────────────────────────────────────────────

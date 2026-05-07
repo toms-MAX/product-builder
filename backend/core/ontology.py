@@ -20,6 +20,7 @@ LEVELS: list[str] = ["중1", "중2", "중3", "고1", "고2", "고3", "수능", "
 
 LEVEL_TO_GRADE: dict[str, int] = {level: i + 1 for i, level in enumerate(LEVELS)}
 GRADE_TO_LEVEL: dict[int, str] = {v: k for k, v in LEVEL_TO_GRADE.items()}
+VALID_LEVELS: set[str] = set(LEVELS)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -58,7 +59,7 @@ VALID_CATEGORIES: set[str] = {
 SLOT_MAP: dict[str, dict] = {
     "SUBJECT_PERSON": {"pos": "noun", "category": "사람/직업"},
     "SUBJECT_THING":  {"pos": "noun", "category": "사물"},
-    "OBJECT_THING":   {"pos": "noun", "category": ["사물", "추상개념"]},
+    "OBJECT_THING":   {"pos": "noun", "category": "사물"},   # 추상개념 제거 → 직접목적어로 자연스러운 사물만
     "OBJECT_PERSON":  {"pos": "noun", "category": "사람/직업"},
     "VERB_GENERAL":   {"pos": "verb", "form": "base"},
     "VERB_PAST":      {"pos": "verb", "form": "verb_past"},

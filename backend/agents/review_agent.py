@@ -151,7 +151,7 @@ class ReviewAgent:
                 rows = conn.execute(
                     f"""
                     SELECT question_id AS id, grammar_point, level, q_type,
-                           stem, answer, quality_score, source, created_at
+                           stem, choices, answer, quality_score, source, created_at
                     FROM questions {where}
                     ORDER BY quality_score ASC, created_at ASC
                     LIMIT ? OFFSET ?

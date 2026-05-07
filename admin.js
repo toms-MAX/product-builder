@@ -649,6 +649,181 @@ async function aiAutoApprove() {
   }
 }
 
+/* ── PDF 추출 탭 ─────────────────────────────────────── */
+let pdfFile       = null;
+let pdfExtracted  = [];
+const PDF_GP_LIST = [
+  '현재완료','과거시제','현재시제','미래시제','현재진행','과거진행',
+  '수동태','가정법과거','가정법과거완료','조동사','to부정사','동명사',
+  '분사','관계사','접속사','원급비교','비교급','최상급','간접의문문',
+];
+
+function pdfDragOver(e)  { e.preventDefault(); document.getElementById('pdf-dropzone').classList.add('drag-over'); }
+function pdfDragLeave(e) { document.getElementById('pdf-dropzone').classList.remove('drag-over'); }
+function pdfDrop(e) {
+  e.preventDefault();
+  document.getElementById('pdf-dropzone').classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) _setPdfFile(e.dataTransfer.files[0]);
+}
+function pdfFileSelected(input) { if (input.files[0]) _setPdfFile(input.files[0]); }
+function _setPdfFile(f) {
+  pdfFile = f;
+  document.getElementById('pdf-file-label').textContent = f.name;
+  document.getElementById('pdf-file-name').style.display = 'flex';
+  document.getElementById('pdf-extract-btn').disabled = false;
+}
+
+function _pdfStep(n) {
+  [1,2,3].forEach(i => {
+    const el = document.getElementById(`pdf-step-${i}`);
+    el.className = 'pdf-step' + (i < n ? ' done' : i === n ? ' active' : '');
+  });
+}
+
+async function pdfExtract() {
+  if (!pdfFile) return;
+  const btn    = document.getElementById('pdf-extract-btn');
+  const status = document.getElementById('pdf-extract-status');
+  btn.disabled = true; btn.textContent = '⏳ 추출 중...';
+  status.textContent = '파일을 분석하고 있습니다...';
+
+  try {
+    const form = new FormData();
+    form.append('file',       pdfFile);
+    form.append('level',      document.getElementById('pdf-level').value);
+    form.append('book_title', document.getElementById('pdf-book-title').value || pdfFile.name);
+
+    const res = await fetch('/api/doc-in/extract-questions', { method: 'POST', body: form });
+    const d   = await res.json();
+    if (!res.ok || !d.success) throw new Error(d.error || '추출 실패');
+
+    pdfExtracted = d.questions || [];
+    status.textContent = '';
+    btn.textContent = '🔍 문제 추출'; btn.disabled = false;
+
+    if (pdfExtracted.length === 0) {
+      status.textContent = '⚠️ 감지된 문제가 없습니다. 다른 파일을 시도해보세요.'; return;
+    }
+
+    _pdfStep(2);
+    pdfRenderPreview();
+    document.getElementById('pdf-preview-card').style.display = '';
+    document.getElementById('pdf-preview-card').scrollIntoView({ behavior:'smooth', block:'start' });
+
+  } catch (e) {
+    status.textContent = '❌ ' + e.message;
+    btn.textContent = '🔍 문제 추출'; btn.disabled = false;
+  }
+}
+
+function pdfRenderPreview() {
+  const list = document.getElementById('pdf-questions-list');
+  document.getElementById('pdf-extract-count').textContent = `${pdfExtracted.length}개 감지됨`;
+  const nums = ['①','②','③','④','⑤'];
+
+  list.innerHTML = pdfExtracted.map((q, i) => {
+    const gp     = q.grammar_point || '';
+    const answer = q.answer || (q.choices?.[q.answer_idx ?? 0] ?? '');
+    const gpOpts = ['', ...PDF_GP_LIST].map(g =>
+      `<option value="${g}" ${g===gp?'selected':''}>${g||'(미분류)'}</option>`).join('');
+    const choicesHtml = (q.choices||[]).map((c, ci) =>
+      `<span class="pdf-q-choice ${c===answer||ci===(q.answer_idx??0)?'correct':''}">${nums[ci]||ci+1} ${c}</span>`
+    ).join('');
+    const stemHtml = (q.raw_stem||'').replace(/_____/g,
+      '<u style="text-decoration:underline;text-decoration-color:#94a3b8;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u>');
+    return `
+    <div class="pdf-q-item" id="pdf-q-${i}">
+      <div class="pdf-q-header">
+        <input type="checkbox" id="pdf-chk-${i}" checked onchange="pdfUpdateCount()">
+        <label for="pdf-chk-${i}" style="font-weight:700;font-size:13px;cursor:pointer;">문제 ${i+1}</label>
+        ${gp ? `<span class="badge badge-grammar">${gp}</span>` : ''}
+        ${q.level ? `<span class="badge badge-level">${q.level}</span>` : ''}
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto;font-size:11px;"
+                onclick="pdfToggleItem(${i})">제외</button>
+      </div>
+      <div class="pdf-q-stem">${stemHtml}</div>
+      <div class="pdf-q-choices">${choicesHtml}</div>
+      <div class="pdf-q-meta">
+        <label>문법 포인트</label>
+        <select id="pdf-gp-${i}">${gpOpts}</select>
+        <label>정답</label>
+        <input type="text" id="pdf-ans-${i}" value="${answer}" style="width:120px;" placeholder="정답">
+      </div>
+    </div>`;
+  }).join('');
+  pdfUpdateCount();
+}
+
+function pdfToggleItem(i) {
+  const chk = document.getElementById(`pdf-chk-${i}`);
+  chk.checked = !chk.checked;
+  document.getElementById(`pdf-q-${i}`).classList.toggle('excluded', !chk.checked);
+  pdfUpdateCount();
+}
+function pdfCheckAll(v) {
+  pdfExtracted.forEach((_, i) => {
+    document.getElementById(`pdf-chk-${i}`).checked = v;
+    document.getElementById(`pdf-q-${i}`).classList.toggle('excluded', !v);
+  });
+  pdfUpdateCount();
+}
+function pdfUpdateCount() {
+  const sel = pdfExtracted.filter((_, i) => document.getElementById(`pdf-chk-${i}`)?.checked).length;
+  document.getElementById('pdf-selected-count').textContent = `${sel} / ${pdfExtracted.length}개 선택됨`;
+}
+
+async function pdfTransformSave() {
+  const selected = pdfExtracted
+    .map((q, i) => document.getElementById(`pdf-chk-${i}`)?.checked ? {
+      ...q,
+      grammar_point: document.getElementById(`pdf-gp-${i}`)?.value || q.grammar_point,
+      answer:        document.getElementById(`pdf-ans-${i}`)?.value || q.answer,
+    } : null)
+    .filter(Boolean);
+
+  if (!selected.length) { toast('선택된 문제가 없습니다.', 'err'); return; }
+
+  const btn = document.querySelector('#pdf-preview-card .btn-primary');
+  btn.disabled = true; btn.textContent = '⏳ 변환 중...';
+
+  try {
+    const res = await fetch('/api/doc-in/transform', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ questions: selected }),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.success) throw new Error(d.error || '변환 실패');
+
+    _pdfStep(3);
+    document.getElementById('pdf-result-card').style.display = '';
+    document.getElementById('pdf-result-body').innerHTML = `
+      <div class="rev-stat-row" style="margin-bottom:16px;">
+        <div class="stat-card"><div class="stat-val" style="color:var(--success);">${d.saved}</div><div class="stat-label">저장 완료</div></div>
+        <div class="stat-card"><div class="stat-val" style="color:var(--warning);">${d.skipped}</div><div class="stat-label">변환 실패·중복</div></div>
+        <div class="stat-card"><div class="stat-val" style="color:var(--primary);">${d.db?.questions_pending??'-'}</div><div class="stat-label">전체 검수 대기</div></div>
+      </div>
+      <p style="font-size:13px;color:var(--gray-500);">저장된 문제는 모두 <strong>미검수(verified=0)</strong> 상태입니다.<br>스와이프 검수에서 통과/미통과를 결정해주세요.</p>`;
+    document.getElementById('pdf-result-card').scrollIntoView({ behavior:'smooth' });
+    toast(`${d.saved}개 저장 완료!`, 'ok');
+  } catch (e) {
+    toast('저장 실패: ' + e.message, 'err');
+    btn.disabled = false; btn.textContent = '✅ 선택 항목 변환 후 저장';
+  }
+}
+
+function pdfReset() {
+  pdfFile = null; pdfExtracted = [];
+  document.getElementById('pdf-file-input').value = '';
+  document.getElementById('pdf-file-name').style.display  = 'none';
+  document.getElementById('pdf-extract-btn').disabled     = true;
+  document.getElementById('pdf-extract-btn').textContent  = '🔍 문제 추출';
+  document.getElementById('pdf-extract-status').textContent = '';
+  document.getElementById('pdf-preview-card').style.display = 'none';
+  document.getElementById('pdf-result-card').style.display  = 'none';
+  document.getElementById('pdf-questions-list').innerHTML = '';
+  _pdfStep(1);
+}
+
 /* ── 초기화 ──────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.nav-item').forEach(el => {

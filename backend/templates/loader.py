@@ -55,6 +55,7 @@ DB_PATH = ROOT / "backend" / "db" / "qbank.db"
 
 def _load_yaml_file(path: Path) -> list[dict]:
     """YAML 파일 하나를 읽어 DB 레코드 리스트로 변환."""
+    import json as _json
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
@@ -64,17 +65,28 @@ def _load_yaml_file(path: Path) -> list[dict]:
 
     records = []
     for tmpl in data.get("templates", []):
+        # grammar-fixed 모드: answer + wrong_choices 필드
+        fixed_answer  = tmpl.get("answer")
+        wrong_choices = tmpl.get("wrong_choices") or []
+        if fixed_answer:
+            all_choices     = [fixed_answer] + [c for c in wrong_choices if c != fixed_answer]
+            grammar_choices = _json.dumps(all_choices, ensure_ascii=False)
+        else:
+            grammar_choices = None
+
         record = {
-            "template_id":   tmpl["id"],
-            "grammar_point": grammar_point,
-            "level_min":     tmpl.get("level_min", default_level_min),
-            "level_max":     tmpl.get("level_max", default_level_max),
-            "stem_template": tmpl["stem"],
-            "q_type":        tmpl.get("q_type", "FIB_MCQ"),
-            "answer_slot":   tmpl.get("answer_slot"),
-            "wrong_slots":   tmpl.get("wrong_slots"),
-            "verified":      tmpl.get("verified", 1),
-            "note":          tmpl.get("note"),
+            "template_id":    tmpl["id"],
+            "grammar_point":  grammar_point,
+            "level_min":      tmpl.get("level_min", default_level_min),
+            "level_max":      tmpl.get("level_max", default_level_max),
+            "stem_template":  tmpl["stem"],
+            "q_type":         tmpl.get("q_type", "FIB_MCQ"),
+            "answer_slot":    tmpl.get("answer_slot"),
+            "wrong_slots":    tmpl.get("wrong_slots"),
+            "grammar_answer": fixed_answer,
+            "grammar_choices": grammar_choices,
+            "verified":       tmpl.get("verified", 1),
+            "note":           tmpl.get("note"),
         }
         records.append(record)
     return records
@@ -140,6 +152,8 @@ def sync_to_db(records: list[dict], db_path: Path = DB_PATH,
                           level_min=:level_min, level_max=:level_max,
                           stem_template=:stem_template, q_type=:q_type,
                           answer_slot=:answer_slot, wrong_slots=:wrong_slots,
+                          grammar_answer=:grammar_answer,
+                          grammar_choices=:grammar_choices,
                           verified=:verified, note=:note
                         WHERE template_id=:template_id
                         """,
@@ -152,11 +166,11 @@ def sync_to_db(records: list[dict], db_path: Path = DB_PATH,
                         INSERT INTO templates
                           (template_id, grammar_point, level_min, level_max,
                            stem_template, q_type, answer_slot, wrong_slots,
-                           verified, note)
+                           grammar_answer, grammar_choices, verified, note)
                         VALUES
                           (:template_id, :grammar_point, :level_min, :level_max,
                            :stem_template, :q_type, :answer_slot, :wrong_slots,
-                           :verified, :note)
+                           :grammar_answer, :grammar_choices, :verified, :note)
                         """,
                         rec,
                     )

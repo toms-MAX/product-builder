@@ -30,8 +30,10 @@ CREATE TABLE IF NOT EXISTS templates (
     level_max     INTEGER DEFAULT 8,
     stem_template TEXT NOT NULL,  -- {SLOT_NAME} 포함 문장 틀
     q_type        TEXT,           -- FIB_MCQ/ERR_ID/FIB_SA/WORDFORM 등
-    answer_slot   TEXT,
-    wrong_slots   TEXT,           -- JSON 배열
+    answer_slot     TEXT,
+    wrong_slots     TEXT,           -- JSON 배열 (레거시 슬롯 기반)
+    grammar_answer  TEXT,           -- 고정 문법 정답 (예: "has")
+    grammar_choices TEXT,           -- JSON 배열, 정답 포함 전체 보기 (예: ["has","have","had","is"])
     verified      INTEGER DEFAULT 1,
     note          TEXT
 );

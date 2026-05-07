@@ -24,16 +24,19 @@ ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 from backend.utils.ai_client import AIClient
-from backend.utils.slot_engine import SlotEngine, FALLBACK_WORDS, SLOT_MAP
+from backend.utils.slot_engine import SlotEngine, FALLBACK_WORDS, _VERB_CONJUGATION_LOOKUP
+from backend.core.ontology import LEVEL_TO_GRADE, SLOT_MAP
 from backend.agents.doc_agent import ensure_db
 
-DB_PATH = ROOT / "backend" / "db" / "qbank.db"
-
-LEVEL_TO_GRADE = {
-    "중1": 1, "중2": 2, "중3": 3,
-    "고1": 4, "고2": 5, "고3": 6,
-    "수능": 7, "수능고급": 8,
+# ERR_ID: answer_slot → 오류에 사용할 활용형 필드명 (정답 대신 이 형태를 삽입)
+ERR_WRONG_FORM = {
+    "VERB_PP":      "verb_ing",    # 현재완료/수동태: has studying (틀림)
+    "VERB_ING":     "verb_pp",     # 진행형:  is finished (틀림)
+    "VERB_PAST":    "_base_word",  # 가정법:  If she work (틀림)
+    "VERB_GENERAL": "verb_ing",    # 조동사:  can studying (틀림)
 }
+
+DB_PATH = ROOT / "backend" / "db" / "qbank.db"
 
 
 class GenAgent:
@@ -148,25 +151,34 @@ class GenAgent:
                 slot_result = {k: v["word"] for k, v in filled["slots"].items()}
                 slot_info   = filled["slots"]   # 활용형 포함 전체 word_info
 
-            # 오답 보기 생성 (answer_slot 기준)
-            answer_slot = tmpl.get("answer_slot")
-            answer_word = slot_result.get(answer_slot, "") if answer_slot else ""
+            # ── grammar-fixed 모드: 조동사·접속사 등 문법어가 답인 경우 ──
+            grammar_answer  = tmpl.get("grammar_answer")
+            grammar_choices_raw = tmpl.get("grammar_choices")
 
-            if answer_slot and answer_word:
-                # FIB 계열: stem에서 정답 단어를 _____로 교체
-                q_type = tmpl.get("q_type", "FIB_MCQ")
-                if q_type in ("FIB_MCQ", "FIB_SA", "WORDFORM"):
-                    stem = stem.replace(answer_word, "_____", 1)
+            if grammar_answer:
+                # stem 안의 {SLOT}은 이미 채워졌고, _____는 그대로 유지됨
+                all_choices = json.loads(grammar_choices_raw) if grammar_choices_raw else [grammar_answer]
+                choices, answer_idx = self.slot.shuffle_choices(all_choices, grammar_answer)
+                answer = grammar_answer
 
-                # 문법 인식 오답 생성 (동사 슬롯 → 같은 동사의 다른 활용형)
-                answer_word_info = slot_info.get(answer_slot, {})
-                choices, answer_idx = self.slot.make_grammar_choices(
-                    answer_word, answer_slot, answer_word_info, grade_num, count=4
-                )
-                answer = choices[answer_idx] if answer_idx >= 0 else answer_word
+            # ── 기존 슬롯 기반 모드 ──────────────────────────────────────
             else:
-                choices = []
-                answer = answer_word or ""
+                answer_slot = tmpl.get("answer_slot")
+                answer_word = slot_result.get(answer_slot, "") if answer_slot else ""
+
+                if answer_slot and answer_word:
+                    q_type = tmpl.get("q_type", "FIB_MCQ")
+                    if q_type in ("FIB_MCQ", "FIB_SA", "WORDFORM"):
+                        stem = stem.replace(answer_word, "_____", 1)
+
+                    answer_word_info = slot_info.get(answer_slot, {})
+                    choices, answer_idx = self.slot.make_grammar_choices(
+                        answer_word, answer_slot, answer_word_info, grade_num, count=4
+                    )
+                    answer = choices[answer_idx] if answer_idx >= 0 else answer_word
+                else:
+                    choices = []
+                    answer = answer_word or ""
 
             questions.append({
                 "question_id":   str(uuid.uuid4()),
@@ -226,6 +238,95 @@ class GenAgent:
             })
 
         return questions
+
+    # ── ERR_ID: 어법상 틀린 것 찾기 ──────────────────
+    def _make_err_id_question(self, grammar_point: str, level: str,
+                              grade_num: int) -> dict | None:
+        """
+        4개 문장(①②③④) 중 1개에 의도적 오류를 삽입한 ERR_ID 문제.
+        오류: 정답 슬롯의 활용형을 틀린 형태로 교체.
+          예) 현재완료 VERB_PP: "has studied" → "has studying"
+        """
+        import random
+
+        conn = self._connect()
+        try:
+            templates = conn.execute(
+                """SELECT * FROM templates
+                   WHERE grammar_point LIKE ? AND verified=1""",
+                [f"%{grammar_point}%"],
+            ).fetchall()
+        finally:
+            conn.close()
+
+        templates = [dict(t) for t in templates]
+        if len(templates) < 2:
+            return None
+
+        random.shuffle(templates)
+        selected = templates[:4]
+
+        sentences: list[dict] = []
+        error_placed = False
+
+        for i, tmpl in enumerate(selected):
+            stem_tpl = tmpl.get("stem_template", "")
+            answer_slot = tmpl.get("answer_slot", "")
+
+            filled = self.slot.fill_template(stem_tpl, grade_num)
+            stem      = filled["stem"]
+            slot_info = filled["slots"]
+            word_info = slot_info.get(answer_slot, {})
+            correct_word = word_info.get("word", "")
+
+            # 오류 문장은 1개만, 아직 안 놓였고, 오류 형태를 구할 수 있을 때
+            is_err = False
+            if not error_placed and answer_slot in ERR_WRONG_FORM and correct_word:
+                form_key  = ERR_WRONG_FORM[answer_slot]
+                wrong_word = word_info.get(form_key, "")
+
+                # word_info에 없으면 전역 룩업 시도
+                if not wrong_word:
+                    conj = _VERB_CONJUGATION_LOOKUP.get(correct_word) or \
+                           _VERB_CONJUGATION_LOOKUP.get(word_info.get("_base_word", ""))
+                    if conj:
+                        wrong_word = conj.get(form_key, "")
+
+                if wrong_word and wrong_word != correct_word:
+                    stem      = stem.replace(correct_word, wrong_word, 1)
+                    is_err    = True
+                    error_placed = True
+                    err_note  = f"'{wrong_word}' → '{correct_word}' 로 고쳐야 합니다."
+
+            sentences.append({"text": stem, "is_error": is_err,
+                               "note": err_note if is_err else ""})
+
+        if not error_placed:
+            return None
+
+        labels   = ["①", "②", "③", "④"]
+        err_pos  = next(i for i, s in enumerate(sentences) if s["is_error"])
+        numbered = "\n".join(f"{labels[i]} {s['text']}"
+                             for i, s in enumerate(sentences[:4]))
+        stem_text = f"다음 ①~④ 중 어법상 틀린 것을 고르시오.\n\n{numbered}"
+
+        return {
+            "question_id":   str(uuid.uuid4()),
+            "grammar_point": grammar_point,
+            "level":         level,
+            "q_type":        "ERR_ID",
+            "stem":          stem_text,
+            "choices":       json.dumps(labels[:4], ensure_ascii=False),
+            "answer":        labels[err_pos],
+            "explanation":   sentences[err_pos]["note"],
+            "tags":          json.dumps([grammar_point, level, "ERR_ID"],
+                                        ensure_ascii=False),
+            "quality_score": 8,
+            "verified":      0,
+            "source":        "template:ERR_ID",
+            "created_at":    datetime.now().isoformat(),
+            "used_count":    0,
+        }
 
     # ── DB 저장 ───────────────────────────────────────
     def _save_questions(self, questions: list[dict]):

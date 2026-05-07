@@ -3,51 +3,63 @@ description: "Present Perfect — have/has + p.p."
 level_min: 1
 level_max: 8
 templates:
-  - id: 현재완료_001
-    stem: "The {SUBJECT_PERSON} has already {VERB_PP} the {OBJECT_THING}."
-    q_type: FIB_MCQ
-    answer_slot: VERB_PP
-    note: "already — 완료 용법"
 
-  - id: 현재완료_002
-    stem: "The {SUBJECT_PERSON} has just {VERB_PP} the {OBJECT_THING}."
-    q_type: FIB_MCQ
-    answer_slot: VERB_PP
-    note: "just — 방금 완료"
+  # ─ A유형: 조동사 빈칸 ──────────────────────────────────────
+  # 문장 안에 주어·동사·목적어가 보이고, 빈칸은 has / have 선택
+  # 학생이 테스트받는 것: "이 주어에는 has인가, have인가?"
 
-  - id: 현재완료_003
-    stem: "The {SUBJECT_PERSON} has never {VERB_PP} the {OBJECT_THING} before."
+  - id: 현재완료_A001
+    stem: "The {SUBJECT_PERSON} _____ already {VERB_PP} the {OBJECT_THING}."
     q_type: FIB_MCQ
-    answer_slot: VERB_PP
-    note: "never — 경험 부정"
+    answer: "has"
+    wrong_choices: ["have", "had", "is", "was"]
+    note: "3인칭 단수(The + 단수명사) → has"
 
-  - id: 현재완료_004
-    stem: "Have you ever {VERB_PP} this kind of {OBJECT_THING}?"
+  - id: 현재완료_A002
+    stem: "I _____ never {VERB_PP} such a {OBJECT_THING} before."
     q_type: FIB_MCQ
-    answer_slot: VERB_PP
-    note: "ever — 경험 의문문"
+    answer: "have"
+    wrong_choices: ["has", "had", "am", "was"]
+    note: "1인칭(I) → have"
 
-  - id: 현재완료_005
-    stem: "The {SUBJECT_PERSON} has recently {VERB_PP} the {OBJECT_THING}."
+  - id: 현재완료_A003
+    stem: "The {SUBJECT_PERSON}s _____ just {VERB_PP} the {OBJECT_THING}."
     q_type: FIB_MCQ
-    answer_slot: VERB_PP
-    note: "recently — 최근 완료"
+    answer: "have"
+    wrong_choices: ["has", "had", "are", "were"]
+    note: "복수 주어(~s) → have"
 
-  - id: 현재완료_006
-    stem: "How long has the {SUBJECT_PERSON} {VERB_PP} the {OBJECT_THING}?"
+  - id: 현재완료_A004
+    stem: "She _____ {VERB_PP} the {OBJECT_THING} three times."
     q_type: FIB_MCQ
-    answer_slot: VERB_PP
-    level_min: 2
-    note: "계속 용법 의문문"
+    answer: "has"
+    wrong_choices: ["have", "had", "is", "does"]
+    note: "She(3인칭 단수) → has"
 
-  - id: 현재완료_007
-    stem: "The {SUBJECT_PERSON} has {VERB_PP} the {OBJECT_THING} three times."
+  - id: 현재완료_A005
+    stem: "We _____ not yet {VERB_PP} the {OBJECT_THING}."
     q_type: FIB_MCQ
-    answer_slot: VERB_PP
-    note: "횟수 — 경험 용법"
+    answer: "have"
+    wrong_choices: ["has", "had", "are", "do"]
+    note: "We(복수) → have"
 
-  - id: 현재완료_008
-    stem: "The {SUBJECT_PERSON} has not yet {VERB_PP} the {OBJECT_THING}."
+  - id: 현재완료_A006
+    stem: "How long _____ the {SUBJECT_PERSON} {VERB_PP} the {OBJECT_THING}?"
     q_type: FIB_MCQ
-    answer_slot: VERB_PP
-    note: "not yet — 미완료"
+    answer: "has"
+    wrong_choices: ["have", "had", "does", "is"]
+    note: "의문문 — 단수 주어 → has (계속 용법)"
+
+  - id: 현재완료_A007
+    stem: "He _____ already {VERB_PP} the {OBJECT_THING} twice."
+    q_type: FIB_MCQ
+    answer: "has"
+    wrong_choices: ["have", "had", "is", "does"]
+    note: "He(3인칭 단수) → has"
+
+  - id: 현재완료_A008
+    stem: "They _____ recently {VERB_PP} a new {OBJECT_THING}."
+    q_type: FIB_MCQ
+    answer: "have"
+    wrong_choices: ["has", "had", "are", "will"]
+    note: "They(복수) → have"
